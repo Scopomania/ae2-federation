@@ -32,3 +32,10 @@ Nothing here has been compiled. Versions in `forge-1.20.1/gradle.properties` are
 6. GUI on LDLib 1.
 7. Renderers (BakedModel/ModelData differ on Forge 1.20.1), beams, cables.
 8. Jade, lang, assets.
+
+## Progress
+- 0002: 170 source files (~7.7k lines) with no MC/AE2/NeoForge/LDLib/Gson/Guava imports copied into `forge-1.20.1/src/main/java`.
+  Compiled standalone with `javac -source 17 -target 17` (0 errors) and scanned bytecode for Java 21-only APIs.
+  Fixed: `List.getFirst/getLast/removeLast/reversed`, `LinkedHashSet.removeFirst` (3 files).
+  Caveat: checked against JDK 21's class library, not a real Java 17 one, so a missed 21-only API could still show up in the Codespace build.
+- Not copied yet: everything that imports Minecraft, AE2, NeoForge, LDLib, Gson, Guava or jetbrains annotations (~850 files), and the whole `client/guide` package (no AE2 guide on 1.20.1).
