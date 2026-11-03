@@ -42,14 +42,14 @@ public record CableBeamStyle(double load, boolean overloaded, float pulseDensity
     }
 
     private static double packet(double phase) {
-        double value = .5 + .5 * Math.cos(Math.TAU * phase);
+        double value = .5 + .5 * Math.cos((2 * Math.PI) * phase);
         double square = value * value;
         double fourth = square * square;
         return fourth * fourth * fourth;
     }
 
     public float alarm(long tick, float partialTick) {
-        return .5f + .5f * (float) Math.cos(Math.TAU * (Math.floorMod(tick, 32) + partialTick) / 32);
+        return .5f + .5f * (float) Math.cos((2 * Math.PI) * (Math.floorMod(tick, 32) + partialTick) / 32);
     }
 
     public float strength(long tick, float partialTick) {
@@ -58,7 +58,7 @@ public record CableBeamStyle(double load, boolean overloaded, float pulseDensity
 
     public float breath(long tick, float partialTick) {
         return overloaded ? 1 + .1f * alarm(tick, partialTick)
-                : 1 + .018f * (float) Math.sin(Math.TAU * (Math.floorMod(tick, 64) + partialTick) / 64);
+                : 1 + .018f * (float) Math.sin((2 * Math.PI) * (Math.floorMod(tick, 64) + partialTick) / 64);
     }
 
     /** How close an easing load comes to its target before it takes the target itself. */
