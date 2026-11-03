@@ -36,8 +36,8 @@ dependencies {
 
     // Mods that are shipped in production (SRG) names go through modImplementation so they get remapped.
     modImplementation "appeng:appliedenergistics2-forge:${ae2_version}"
-    // LDLib 1 official 1.20.1 build. Drop the jar in forge-1.20.1/libs/ (gitignored).
-    modImplementation files("libs/ldlib-forge-1.20.1-${ldlib_version}.jar")
+    // LDLib 1 official 1.20.1 Forge build, Modrinth version id YSOP0G6O (= 1.0.52.a). A plain maven dependency so it gets remapped.
+    modImplementation "maven.modrinth:ldlib:${ldlib_modrinth_version}"
 }
 
 tasks.named('processResources') {
