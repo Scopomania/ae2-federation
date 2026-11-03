@@ -34,8 +34,15 @@ Nothing here has been compiled. Versions in `forge-1.20.1/gradle.properties` are
 8. Jade, lang, assets.
 
 ## Progress
-- 0002: 170 source files (~7.7k lines) with no MC/AE2/NeoForge/LDLib/Gson/Guava imports copied into `forge-1.20.1/src/main/java`.
-  Compiled standalone with `javac -source 17 -target 17` (0 errors) and scanned bytecode for Java 21-only APIs.
-  Fixed: `List.getFirst/getLast/removeLast/reversed`, `LinkedHashSet.removeFirst` (3 files).
-  Caveat: checked against JDK 21's class library, not a real Java 17 one, so a missed 21-only API could still show up in the Codespace build.
-- Not copied yet: everything that imports Minecraft, AE2, NeoForge, LDLib, Gson, Guava or jetbrains annotations (~850 files), and the whole `client/guide` package (no AE2 guide on 1.20.1).
+Compiled against the real Forge 1.20.1 + AE2 15.4.10 + LDLib 1 classes (javac -source 17), not just Java syntax.
+
+- 0002: 170 files with no MC/AE2/NeoForge imports.
+- 0007: +116 files. Mechanical NeoForge->Forge remap (IEventBus, IItemHandler, IFluidHandler, FluidStack, Tags, events,
+  ModelData, ResourceLocation factories, ...). 286 files now compile clean together.
+
+Real size of what is left (correcting an earlier overestimate that counted tests): 482 main files outside `client/guide`.
+- 286 compile clean (done)
+- 150 need real porting (registries/DeferredRegister -> Forge RegistryObject, capabilities -> LazyOptional,
+  ItemInteractionResult, 1.21 block/BE APIs, rendering: ByteBufferBuilder / RenderStateShard / baked models)
+- 46 deferred: 20 use LDLib2 (GUI rewrite on LDLib 1), 27 mixins / Jade (re-target against AE2 15; Jade not a dependency yet)
+- + 12 NeoForge entrypoint/network files in neoforge-1.21.1 to redo as Forge SimpleChannel + @Mod entrypoint
