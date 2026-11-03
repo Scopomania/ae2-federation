@@ -1,6 +1,7 @@
 plugins {
     id 'java-library'
-    id 'net.minecraftforge.gradle' version '[6.0.24,6.2)'
+    // ModDevGradle Legacy: Forge 1.20.1 on Gradle 9 (ForgeGradle 6 does not run on Gradle 9).
+    id 'net.neoforged.moddev.legacyforge' version '2.0.146'
     id 'org.spongepowered.mixin' version '0.7.+'
 }
 
@@ -13,20 +14,13 @@ java {
     withSourcesJar()
 }
 
-// Port target: copy common/src/main -> forge-1.20.1/src/main package by package as each one is ported.
-sourceSets.main.resources.srcDir('src/generated/resources')
-
-minecraft {
-    mappings channel: mappings_channel, version: mappings_version
+legacyForge {
+    version = "${minecraft_version}-${forge_version}"
     runs {
-        configureEach {
-            workingDirectory project.file("run/${name}")
-            property 'forge.logging.console.level', 'debug'
-            mods { "${mod_id}" { source sourceSets.main } }
-        }
-        client { property 'mixin.env.remapRefMap', 'true'; property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg" }
-        server { args '--nogui' }
+        client { client() }
+        server { server() }
     }
+    mods { "${mod_id}" { sourceSet sourceSets.main } }
 }
 
 mixin {
@@ -39,29 +33,22 @@ repositories {
     maven { name = 'ModMaven (AE2)'; url = 'https://modmaven.dev/'; content { includeGroup 'appeng' } }
     maven { name = 'CurseMaven'; url = 'https://cursemaven.com'; content { includeGroup 'curse.maven' } }
     maven { name = 'Modrinth'; url = 'https://api.modrinth.com/maven'; content { includeGroup 'maven.modrinth' } }
-    maven { name = 'Jade'; url = 'https://maven.minecraftforge.net/' }
 }
 
 dependencies {
-    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+    // TODO when mixins are ported: MixinExtras (compileOnly/annotationProcessor + jarJar).
 
-    compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:${mixinextras_version}"))
-    implementation(jarJar("io.github.llamalad7:mixinextras-forge:${mixinextras_version}")) { jarJar.ranged(it, "[${mixinextras_version},)") }
-
-    implementation fg.deobf("appeng:appliedenergistics2-forge:${ae2_version}")
-    // LDLib 1 official 1.20.1 build. Jar was provided by the user; either drop it in libs/ or use CurseMaven id from the project page.
-    implementation fg.deobf(files("libs/ldlib-forge-1.20.1-${ldlib_version}.jar"))
-    // Jade (optional integration) - confirm coordinates before enabling
-    // compileOnly fg.deobf("maven.modrinth:jade:<1.20.1-forge file id>")
+    // Mods that are shipped in production (SRG) names go through modImplementation so they get remapped.
+    modImplementation "appeng:appliedenergistics2-forge:${ae2_version}"
+    // LDLib 1 official 1.20.1 build. Drop the jar in forge-1.20.1/libs/ (gitignored).
+    modImplementation files("libs/ldlib-forge-1.20.1-${ldlib_version}.jar")
 }
 
 tasks.named('processResources') {
-    def props = [mod_id: mod_id, mod_name: mod_name, mod_version: project.version, mod_license: mod_license,
+    def props = [mod_id: mod_id, mod_name: mod_name, mod_version: project.version.toString(), mod_license: mod_license,
                  forge_version_range: forge_version_range, ae2_version_range: ae2_version_range,
                  ldlib_version_range: ldlib_version_range, minecraft_version: minecraft_version]
     inputs.properties props
     filesMatching('META-INF/mods.toml') { expand props }
 }
-
-tasks.named('jar') { finalizedBy 'reobfJar' }
