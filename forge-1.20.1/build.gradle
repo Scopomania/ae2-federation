@@ -2,7 +2,6 @@ plugins {
     id 'java-library'
     // ModDevGradle Legacy: Forge 1.20.1 on Gradle 9 (ForgeGradle 6 does not run on Gradle 9).
     id 'net.neoforged.moddev.legacyforge' version '2.0.146'
-    id 'org.spongepowered.mixin' version '0.7.+'
 }
 
 group = rootProject.group
@@ -23,10 +22,7 @@ legacyForge {
     mods { "${mod_id}" { sourceSet sourceSets.main } }
 }
 
-mixin {
-    add sourceSets.main, "${mod_id}.refmap.json"
-    config "${mod_id}.mixins.json"
-}
+// TODO when mixins are ported: MDG Legacy mixin setup (annotation processor + refmap). Not the Sponge gradle plugin, it needs ForgeGradle.
 
 repositories {
     mavenCentral()
@@ -36,7 +32,6 @@ repositories {
 }
 
 dependencies {
-    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
     // TODO when mixins are ported: MixinExtras (compileOnly/annotationProcessor + jarJar).
 
     // Mods that are shipped in production (SRG) names go through modImplementation so they get remapped.
