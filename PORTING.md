@@ -40,6 +40,9 @@ Compiled against the real Forge 1.20.1 + AE2 15.4.10 + LDLib 1 classes (javac -s
 - 0008: removed Java 21-only calls (List.getFirst/getLast, Math.TAU); scripts/check17 scans bytecode for more.
 - 0009: +8 SavedData classes (SavedData.Factory -> computeIfAbsent(load, new, name), save/load without HolderLookup.Provider,
   AEKey NBT without provider, DataResult.getOrThrow with the 1.20.1 signature). 294 files compile clean.
+- 0012: small blockers (tick events -> TickEvent.LevelTickEvent, BlockPos.min/max helper, 1.20.1 shouldTickBlocksAt),
+  QuantumCardData (card link as NBT instead of a data component), policy menu stub, wrench tag from AE2 15 ConventionTags.
+- 0011: capability layer (CapProviders attach rules, Caps lookup/cache stand-in, ItemInteractionResult shim).
 - 0010: FederationServerConfig on Forge (ModLoadingContext.registerConfig, ForgeConfigSpec); FML jars added to my compile classpath.
 - 0007: +116 files. Mechanical NeoForge->Forge remap (IEventBus, IItemHandler, IFluidHandler, FluidStack, Tags, events,
   ModelData, ResourceLocation factories, ...). 286 files now compile clean together.
@@ -50,3 +53,10 @@ Real size of what is left (correcting an earlier overestimate that counted tests
   ItemInteractionResult, 1.21 block/BE APIs, rendering: ByteBufferBuilder / RenderStateShard / baked models)
 - 46 deferred: 20 use LDLib2 (GUI rewrite on LDLib 1), 27 mixins / Jade (re-target against AE2 15; Jade not a dependency yet)
 - + 12 NeoForge entrypoint/network files in neoforge-1.21.1 to redo as Forge SimpleChannel + @Mod entrypoint
+
+## Next blocker (99 files wait on it)
+The pattern-provider cluster: `FederationPatternProviderBlockEntity`, `MappedPatternProvider`, `NativeProviderLane*`.
+Two real problems, not mechanical:
+- `NativeProviderLane` extends AE2's `PatternProviderLogic` and reaches into it with a mixin (`PatternProviderLogicAccess`);
+  AE2 15's class differs (no `saveChangedInventory`, different `TickingRequest`, `IConfigManager` without importSettings/exportSettings).
+- Needs the mixin setup (ModDevGradle Legacy annotation processor + refmap) and the 4 top-level mixins retargeted at AE2 15.
