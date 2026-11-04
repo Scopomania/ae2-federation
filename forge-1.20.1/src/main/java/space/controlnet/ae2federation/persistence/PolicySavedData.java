@@ -1,0 +1,97 @@
+package space.controlnet.ae2federation.persistence;
+
+import java.util.Optional;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.saveddata.SavedData;
+import space.controlnet.ae2federation.policy.PolicyCapability;
+import space.controlnet.ae2federation.policy.PolicyDelete;
+import space.controlnet.ae2federation.policy.PolicyEdit;
+import space.controlnet.ae2federation.policy.PolicyKey;
+import space.controlnet.ae2federation.policy.PolicyMutationResult;
+import space.controlnet.ae2federation.policy.PolicyRecord;
+import space.controlnet.ae2federation.policy.PolicyRevision;
+import space.controlnet.ae2federation.policy.PolicyStore;
+import space.controlnet.ae2federation.policy.PolicyStoreSnapshot;
+
+public final class PolicySavedData extends SavedData {
+    private static final String DATA_NAME = "ae2federation_global_policies";
+    
+    private final PolicyStore store;
+
+    public PolicySavedData() {
+        this(new PolicyStore());
+    }
+
+    private PolicySavedData(PolicyStore store) {
+        this.store = store;
+    }
+
+    public static PolicySavedData get(ServerLevel level) {
+        return level.getServer().overworld().getDataStorage().computeIfAbsent(PolicySavedData::load, PolicySavedData::new, DATA_NAME);
+    }
+
+    public PolicyMutationResult edit(PolicyEdit edit) {
+        var result = store.edit(edit);
+        markAccepted(result);
+        return result;
+    }
+
+    public PolicyMutationResult editAll(java.util.List<PolicyEdit> edits) {
+        var result = store.editAll(edits);
+        markAccepted(result);
+        return result;
+    }
+
+    public PolicyMutationResult delete(PolicyDelete deletion) {
+        var result = store.delete(deletion);
+        markAccepted(result);
+        return result;
+    }
+
+    public Optional<PolicyRecord.Configured> configured(PolicyKey key) {
+        return store.configured(key);
+    }
+
+    public java.util.List<PolicyRecord.Configured> configuredRules(PolicyCapability capability) {
+        return store.configuredRules(capability);
+    }
+
+    public PolicyRevision revision(PolicyKey key) {
+        return store.revision(key);
+    }
+
+    public int configuredCount() {
+        return store.configuredCount();
+    }
+
+    public int tombstoneCount() {
+        return store.tombstoneCount();
+    }
+
+    public PolicyStoreSnapshot snapshot() {
+        return store.snapshot();
+    }
+
+    /** The revision {@code snapshot().highWatermark()} reports, without copying the rules. */
+    public PolicyRevision highWatermark() {
+        return store.nextRevision();
+    }
+
+    @Override
+    public CompoundTag save(CompoundTag tag) {
+        return PolicyStateCodec.save(store.snapshot(), tag);
+    }
+
+    /** Reads saved rules; public so a GameTest can load a world saved under older rules. */
+    public static PolicySavedData load(CompoundTag tag) {
+        return new PolicySavedData(PolicyStore.restore(PolicyStateCodec.load(tag)));
+    }
+
+    private void markAccepted(PolicyMutationResult result) {
+        if (result instanceof PolicyMutationResult.Accepted) {
+            setDirty();
+        }
+    }
+}

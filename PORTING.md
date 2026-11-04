@@ -37,6 +37,9 @@ Nothing here has been compiled. Versions in `forge-1.20.1/gradle.properties` are
 Compiled against the real Forge 1.20.1 + AE2 15.4.10 + LDLib 1 classes (javac -source 17), not just Java syntax.
 
 - 0002: 170 files with no MC/AE2/NeoForge imports.
+- 0008: removed Java 21-only calls (List.getFirst/getLast, Math.TAU); scripts/check17 scans bytecode for more.
+- 0009: +8 SavedData classes (SavedData.Factory -> computeIfAbsent(load, new, name), save/load without HolderLookup.Provider,
+  AEKey NBT without provider, DataResult.getOrThrow with the 1.20.1 signature). 294 files compile clean.
 - 0007: +116 files. Mechanical NeoForge->Forge remap (IEventBus, IItemHandler, IFluidHandler, FluidStack, Tags, events,
   ModelData, ResourceLocation factories, ...). 286 files now compile clean together.
 
