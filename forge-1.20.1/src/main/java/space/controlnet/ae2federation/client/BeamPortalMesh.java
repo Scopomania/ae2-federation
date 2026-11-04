@@ -31,7 +31,7 @@ public final class BeamPortalMesh {
 
     static {
         for (int detail = 0; detail < 3; detail++) CIRCLE[detail] = angles(1, SEGMENTS[detail], 1, 0);
-        float[] angles = angles(6, 1, .025 * 6 / Math.TAU, .2);
+        float[] angles = angles(6, 1, .025 * 6 / (2 * Math.PI), .2);
         System.arraycopy(angles, 0, STREAK, 0, angles.length);
     }
 
@@ -83,7 +83,7 @@ public final class BeamPortalMesh {
             for (int j = 0; j < segments; j++) {
                 int k = (i * segments + j) * 4;
                 for (int end = 0; end < 2; end++) {
-                    double angle = offset + Math.TAU / count * (i + duty * (j + end) / segments);
+                    double angle = offset + (2 * Math.PI) / count * (i + duty * (j + end) / segments);
                     out[k + end * 2] = (float) Math.cos(angle);
                     out[k + end * 2 + 1] = (float) Math.sin(angle);
                 }
@@ -103,7 +103,7 @@ public final class BeamPortalMesh {
         // The streaks cross the emitter's centre plate, which grows with the body.
         double scale = side / 2.0;
         double phase = phase(tick, partialTick);
-        float strength = (float) ((.82 + .12 * Math.min(style.load(), 1)) * (1 + .04 * Math.sin(Math.TAU * phase)));
+        float strength = (float) ((.82 + .12 * Math.min(style.load(), 1)) * (1 + .04 * Math.sin((2 * Math.PI) * phase)));
         boolean red = style.overloaded();
         float r = red ? 1 : .14f, g = red ? .045f : .85f, b = red ? .015f : 1;
         var circle = CIRCLE[detail];

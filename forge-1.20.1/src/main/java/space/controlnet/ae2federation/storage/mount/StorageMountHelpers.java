@@ -14,7 +14,7 @@ final class StorageMountHelpers {
 
     static MEStorage aggregate(List<ExportSource> sources) {
         if (sources.size() == 1) {
-            return sources.getFirst().storage();
+            return sources.get(0).storage();
         }
         var aggregate = new NetworkStorage();
         sources.forEach(source -> aggregate.mount(source.priority(), source.storage()));

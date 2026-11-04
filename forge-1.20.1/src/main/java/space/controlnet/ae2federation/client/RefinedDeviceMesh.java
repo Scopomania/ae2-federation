@@ -70,7 +70,7 @@ public final class RefinedDeviceMesh {
     private static List<Vertex> clip(List<Vertex> input,int axis,double plane,boolean greater) {
         var output=new ArrayList<Vertex>();
         if (input.isEmpty()) return output;
-        var previous=input.getLast();
+        var previous=input.get(input.size() - 1);
         double before=previous.coordinate(axis)-plane;
         boolean wasInside=greater ? before>=-1e-8 : before<=1e-8;
         for (var current:input) {
