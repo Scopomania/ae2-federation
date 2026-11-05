@@ -54,9 +54,21 @@ Real size of what is left (correcting an earlier overestimate that counted tests
 - 46 deferred: 20 use LDLib2 (GUI rewrite on LDLib 1), 27 mixins / Jade (re-target against AE2 15; Jade not a dependency yet)
 - + 12 NeoForge entrypoint/network files in neoforge-1.21.1 to redo as Forge SimpleChannel + @Mod entrypoint
 
-## Next blocker (99 files wait on it)
-The pattern-provider cluster: `FederationPatternProviderBlockEntity`, `MappedPatternProvider`, `NativeProviderLane*`.
-Two real problems, not mechanical:
-- `NativeProviderLane` extends AE2's `PatternProviderLogic` and reaches into it with a mixin (`PatternProviderLogicAccess`);
-  AE2 15's class differs (no `saveChangedInventory`, different `TickingRequest`, `IConfigManager` without importSettings/exportSettings).
-- Needs the mixin setup (ModDevGradle Legacy annotation processor + refmap) and the 4 top-level mixins retargeted at AE2 15.
+## Pattern-provider / AE2 15 layer (done in the working tree, lands with the client stack)
+AE2 15 differs from 19 in ways the code relies on; all handled without touching AE2:
+- Global crafting providers (`ICraftingService.add/remove/refreshGlobalCraftingProvider`) do not exist in AE2 15, whose
+  providers are always keyed by grid node. `ae2/GlobalCraftingProviders` registers a provider into
+  `NetworkCraftingProviders` through AE2 15's node-independent `ProviderState` (reflection), replacing the
+  `CraftingGlobalProviderLifecycleMixin` and three accessor mixins.
+- `PatternProviderLogic` host API: `saveChanges()` + `onChangeInventory(InternalInventory,int)` (19 had AppEngInternalInventory variants).
+- `IConfigManager`: `registerSetting` instead of `importSettings`/`exportSettings`; `IPatternDetails.getOutputs()` is an array;
+  `TickingRequest` has the extra `alertable` flag; parts use `onPartActivate`; `GenericInternalInventory.isAllowed(AEKey)`.
+- Mixin targets checked statically against AE2 15: CableBusContainer.addToWorld, PatternProviderLogic.{findAdapter,pushPattern,
+  patterns,patternInputs,sendList}, StorageService.onServerEndTick, CraftingService.insertIntoCpus, NetworkStorage.priorityInventory all exist.
+
+## Next: client rendering stack (20 files, ~100 errors; everything else waits on it through references)
+- RenderStateShard statics are protected in 1.20.1 -> a RenderStateShard subclass that re-exports them.
+- 1.21 vertex API (addVertex/setColor/setUv/setNormal, ByteBufferBuilder, MeshData) -> 1.20.1 vertex().color().uv().normal().endVertex().
+- FaceBakery.bakeQuad / QuadBakingVertexConsumer signatures, RenderLevelStageEvent stages, ClientTickEvent -> TickEvent.ClientTickEvent,
+  RegisterRenderBuffersEvent (1.21 only).
+- Still needed on my classpath: mixinextras-common (3 mixins use WrapMethod/WrapOperation) and lwjgl-glfw (FederationScreenSwitch).
