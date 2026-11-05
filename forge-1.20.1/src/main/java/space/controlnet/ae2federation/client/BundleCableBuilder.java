@@ -1,0 +1,114 @@
+package space.controlnet.ae2federation.client;
+
+import space.controlnet.ae2federation.compat.QuadBaker;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.core.Direction;
+import space.controlnet.ae2federation.bundle.BundleLook;
+
+/**
+ * A bundled cell's translucent quads: its part of the bundle's one shell ({@link BundleShellLayout}), cut from the
+ * artist's core frame, and inside it the ordinary cable's pieces at the cell's own size. A collar rings the cell where
+ * its beam runs on into the next cell or into a branch, and a dense arm reaches each device it connects to, so a 2x3
+ * bundle shows six beams in one 2x3 shell. A 2x2 or 3x3 bundle is one thick cable instead: no collars, but the artist's rings
+ * ({@link LargeCableRings}) around the one beam down its middle, and one dense arm across each device contact.
+ */
+final class BundleCableBuilder {
+    private final FederationCableBuilder cable;
+    private final TextureAtlasSprite frame;
+    private final TextureAtlasSprite line;
+    private final LargeCableRings rings;
+
+    BundleCableBuilder(FederationCableBuilder cable, TextureAtlasSprite frame, TextureAtlasSprite line,
+            LargeCableRings rings) {
+        this.cable = cable;
+        this.frame = frame;
+        this.line = line;
+        this.rings = rings;
+    }
+
+    List<BakedQuad> build(BundleLook look) {
+        var quads = new ArrayList<BakedQuad>();
+        var baker = new QuadBaker();
+        for (var panel : BundleShellLayout.panels(look)) {
+            for (var tile : BundleShellLayout.tiles(panel)) quads.add(quad(baker, panel, tile, frame));
+        }
+        for (var side : Direction.values()) {
+            if (look.open(side)) {
+                if (!look.thick()) cable.addCollar(side, quads);
+            } else if (look.dense(side)) {
+                if (look.thick()) addSharedArm(look, side, quads);
+                else cable.addDenseConnection(side, quads);
+            }
+        }
+        return List.copyOf(quads);
+    }
+
+    /**
+     * A 2x2 or 3x3 cell's part of the one dense arm its bundle sends to a device, drawn from the line texture's texels as
+     * {@link BundleShellLayout#armFaces} lays them out.
+     */
+    private void addSharedArm(BundleLook look, Direction side, List<BakedQuad> quads) {
+        var baker = new QuadBaker();
+        for (var face : BundleShellLayout.armFaces(look, side)) {
+            for (var tile : face.tiles()) quads.add(quad(baker, face.panel(), tile, line));
+        }
+    }
+
+    /**
+     * A 2x2 or 3x3 cell's share of the artist's rings. They are opaque, so they go in the solid layer: in the translucent one
+     * the shell, drawn first and writing depth, hid whatever of them lay behind it.
+     */
+    List<BakedQuad> solid(BundleLook look) {
+        if (!look.thick()) return List.of();
+        var quads = new ArrayList<BakedQuad>();
+        rings.add(look, quads);
+        return List.copyOf(quads);
+    }
+
+    /**
+     * One tile of a panel, wound counter-clockwise seen from outside, as the translucent layer culls. It samples the
+     * middle of its one texel, so mipmaps never blend in the next.
+     */
+    private static BakedQuad quad(QuadBaker baker, BundleShellLayout.Panel panel,
+            BundleShellLayout.Tile tile, TextureAtlasSprite sprite) {
+        var normal = panel.normal();
+        baker.setSprite(sprite);
+        baker.setDirection(normal);
+        baker.setShade(true);
+        baker.setHasAmbientOcclusion(true);
+        baker.setTintIndex(-1);
+        // u then v is counter-clockwise from outside when u x v points along the normal.
+        boolean forward = cross(panel.uAxis(), panel.vAxis()) == normal.getAxis().ordinal()
+                && sign(panel.uAxis(), panel.vAxis()) == normal.getAxisDirection().getStep();
+        float[][] corners = forward
+                ? new float[][] {{tile.u0(), tile.v0()}, {tile.u1(), tile.v0()}, {tile.u1(), tile.v1()},
+                        {tile.u0(), tile.v1()}}
+                : new float[][] {{tile.u0(), tile.v0()}, {tile.u0(), tile.v1()}, {tile.u1(), tile.v1()},
+                        {tile.u1(), tile.v0()}};
+        float texelU = tile.texelU() + .5f;
+        float texelV = tile.texelV() + .5f;
+        for (var corner : corners) {
+            float[] position = new float[3];
+            position[normal.getAxis().ordinal()] = panel.plane() / 16;
+            position[panel.uAxis().ordinal()] = corner[0] / 16;
+            position[panel.vAxis().ordinal()] = corner[1] / 16;
+            baker.vertex(position[0], position[1], position[2]).color(255, 255, 255, 255)
+                    .uv(sprite.getU(texelU / 16), sprite.getV(texelV / 16)).uv2(0, 0)
+                    .normal(normal.getStepX(), normal.getStepY(), normal.getStepZ()).endVertex();
+        }
+        return baker.bakeQuad();
+    }
+
+    /** The axis of {@code a x b} for two different axes. */
+    private static int cross(Direction.Axis a, Direction.Axis b) {
+        return 3 - a.ordinal() - b.ordinal();
+    }
+
+    /** The sign of {@code a x b}: positive for X x Y, Y x Z and Z x X. */
+    private static int sign(Direction.Axis a, Direction.Axis b) {
+        return (b.ordinal() - a.ordinal() + 3) % 3 == 1 ? 1 : -1;
+    }
+}

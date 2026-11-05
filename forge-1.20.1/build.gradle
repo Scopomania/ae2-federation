@@ -32,7 +32,8 @@ repositories {
 }
 
 dependencies {
-    // TODO when mixins are ported: MixinExtras (compileOnly/annotationProcessor + jarJar).
+    // MixinExtras: 3 mixins use WrapMethod/WrapOperation. Compile-only for now; the jarJar for runtime lands with the mixin config.
+    compileOnly "io.github.llamalad7:mixinextras-common:${mixinextras_version}"
 
     // Mods that are shipped in production (SRG) names go through modImplementation so they get remapped.
     modImplementation "appeng:appliedenergistics2-forge:${ae2_version}"

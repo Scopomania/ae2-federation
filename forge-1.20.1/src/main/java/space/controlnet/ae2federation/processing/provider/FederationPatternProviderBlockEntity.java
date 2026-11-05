@@ -1,0 +1,1175 @@
+package space.controlnet.ae2federation.processing.provider;
+
+import space.controlnet.ae2federation.capability.Caps;
+import appeng.api.config.Setting;
+import appeng.api.networking.GridFlags;
+import appeng.api.networking.GridHelper;
+import appeng.api.networking.IGridNode;
+import appeng.api.networking.IGridNodeListener;
+import appeng.api.networking.IManagedGridNode;
+import appeng.api.orientation.BlockOrientation;
+import appeng.api.orientation.RelativeSide;
+import appeng.api.stacks.AEItemKey;
+import appeng.api.util.IConfigManager;
+import appeng.blockentity.grid.AENetworkBlockEntity;
+import appeng.api.upgrades.IUpgradeInventory;
+import appeng.api.upgrades.IUpgradeableObject;
+import appeng.api.upgrades.UpgradeInventories;
+import appeng.helpers.patternprovider.PatternProviderLogic;
+import appeng.helpers.patternprovider.PatternProviderLogicHost;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.nbt.Tag;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.Nullable;
+import space.controlnet.ae2federation.domain.FederationBindingRefresh;
+import space.controlnet.ae2federation.ae2.processing.NativeLaneDispatchListener;
+import space.controlnet.ae2federation.ae2.processing.NativeProviderLane;
+import space.controlnet.ae2federation.ae2.processing.NativeProviderOwnerLogic;
+import space.controlnet.ae2federation.domain.FederationDomainInvalidationReason;
+import space.controlnet.ae2federation.domain.FederationDomainNodeEvidence;
+import space.controlnet.ae2federation.domain.FederationDomainNodeKind;
+import space.controlnet.ae2federation.domain.FederationDomainNodeId;
+import space.controlnet.ae2federation.domain.FederationDomainPortEvidence;
+import space.controlnet.ae2federation.domain.FederationDomainPortId;
+import space.controlnet.ae2federation.domain.FederationDomainRegistryAccess;
+import space.controlnet.ae2federation.domain.FederationDomainSnapshot;
+import space.controlnet.ae2federation.domain.port.FederationPort;
+import space.controlnet.ae2federation.domain.port.FederationPortCapability;
+import space.controlnet.ae2federation.processing.ProcessingRegistration;
+import space.controlnet.ae2federation.processing.claim.ClaimEpoch;
+import space.controlnet.ae2federation.processing.claim.ClaimRequest;
+import space.controlnet.ae2federation.processing.claim.ClaimResult;
+import space.controlnet.ae2federation.processing.claim.ClaimState;
+import space.controlnet.ae2federation.processing.claim.EndpointId;
+import space.controlnet.ae2federation.processing.claim.EndpointIdentity;
+import space.controlnet.ae2federation.processing.claim.EndpointInstanceEpoch;
+import space.controlnet.ae2federation.processing.claim.EndpointOwnerIdentity;
+import space.controlnet.ae2federation.processing.claim.NativeTargetDomainRegistry;
+import space.controlnet.ae2federation.processing.endpoint.EndpointBlockEntity;
+import space.controlnet.ae2federation.processing.endpoint.EndpointTargetBinding;
+
+/**
+ * ME Federation Pattern Provider. The front face is the Federation port; the other five faces expose one native ME
+ * node. The physical Pattern slots and settings belong to one native {@link NativeProviderOwnerLogic}, so AE2's own
+ * Pattern Provider menu, Pattern Access Terminal and drop/persistence rules apply to them. Each mapped Endpoint gets
+ * one native {@link NativeProviderLane}, published to AE2 as its own crafting provider; AE2's planner and CPUs choose
+ * among Lanes, and each Lane keeps its own native Blocking, lock, send remainder and return state.
+ */
+public final class FederationPatternProviderBlockEntity extends AENetworkBlockEntity
+        implements PatternProviderLogicHost, ProviderMappingController {
+    public static final int PATTERN_SLOTS = 9;
+    /**
+     * Side of an Endpoint through which Lanes reach its Subnet: the face opposite its Federation face. Any
+     * non-Federation face is equivalent; an Endpoint that is gone yields a side the authorization then rejects.
+     */
+    public static Direction endpointAccessSide(net.minecraft.world.level.Level level, BlockPos endpointPosition) {
+        var state = level.isLoaded(endpointPosition) ? level.getBlockState(endpointPosition) : null;
+        return state != null && state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING)
+                ? state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING).getOpposite()
+                : Direction.DOWN;
+    }
+    private static final String SCHEMA_TAG = "federationProviderSchema";
+    private static final int SCHEMA = 1;
+    private static final String IDENTITY_TAG = "providerIdentity";
+    private static final String OWNER_TAG = "ownerLogic";
+    private static final String LANES_TAG = "laneBindings";
+    private static final String PROVIDER_TAG = "mappedProvider";
+    private static final String NATIVE_PORT = "native";
+    private static final int MAINTENANCE_INTERVAL = 20;
+    private static final IGridNodeListener<FederationPatternProviderBlockEntity> NODE_LISTENER =
+            new IGridNodeListener<>() {
+                @Override
+                public void onSaveChanges(FederationPatternProviderBlockEntity owner, IGridNode node) {
+                    owner.saveChanges();
+                }
+
+                @Override
+                public void onStateChanged(FederationPatternProviderBlockEntity owner, IGridNode node, State state) {
+                    owner.onMainNodeStateChanged(state);
+                }
+
+                @Override
+                public void onGridChanged(FederationPatternProviderBlockEntity owner, IGridNode node) {
+                    owner.onGridChanged();
+                }
+            };
+
+    /** Joins the energy pool of the subnets of the Endpoints this Provider claims. */
+    private final space.controlnet.ae2federation.energy.FederationEnergyConnection energyConnection =
+            new space.controlnet.ae2federation.energy.FederationEnergyConnection();
+    private final NativeProviderOwnerLogic owner;
+    private final MappedPatternProvider provider;
+    private final List<LaneBinding> lanes = new ArrayList<>();
+    private final NativeTargetDomainRegistry domains = new NativeTargetDomainRegistry();
+    private final LaneConfigManager configManager;
+    private ProviderIdentity identity = ProviderIdentity.create();
+    private @Nullable ProviderRuntime runtime;
+    private @Nullable Caps.Cache<FederationPort> federationCache;
+    private @Nullable FederationDomainNodeId federationDomainNodeId;
+    private boolean federationDomainDirty = true;
+    private @Nullable FederationDomainNodeEvidence publishedEvidence;
+    private boolean unloading;
+    private boolean pendingRotation;
+    private int maintenanceTicks;
+
+    public FederationPatternProviderBlockEntity(BlockPos position, BlockState state) {
+        this(ProcessingRegistration.PROVIDER_BLOCK_ENTITY.get(), position, state);
+    }
+
+    public FederationPatternProviderBlockEntity(BlockEntityType<?> type, BlockPos position, BlockState state) {
+        super(type, position, state);
+        getMainNode().setFlags(GridFlags.REQUIRE_CHANNEL)
+                .addService(appeng.me.energy.IEnergyOverlayGridConnection.class, energyConnection);
+        energyConnection.bind(this, getMainNode());
+        owner = new NativeProviderOwnerLogic(getMainNode(), this, PATTERN_SLOTS);
+        provider = new MappedPatternProvider(getMainNode(), this, owner.getPatternInv());
+        owner.onPatternSlotChanged(provider::refreshPatternSlot);
+        configManager = new LaneConfigManager(owner.getConfigManager(), provider::nativeLanes);
+    }
+
+    @Override
+    protected IManagedGridNode createMainNode() {
+        return GridHelper.createManagedNode(this, NODE_LISTENER);
+    }
+
+    // ---- orientation and faces
+
+    public Direction federationFace() {
+        return getOrientation().getSide(RelativeSide.FRONT);
+    }
+
+    @Override
+    public Set<Direction> getGridConnectableSides(BlockOrientation orientation) {
+        return EnumSet.complementOf(EnumSet.of(orientation.getSide(RelativeSide.FRONT)));
+    }
+
+    @Override
+    protected void onOrientationChanged(BlockOrientation orientation) {
+        super.onOrientationChanged(orientation);
+        if (runtime != null) {
+            runtime.rotate(new ProviderOrientation(ProviderNodeWiring.face(federationFace())));
+            pendingRotation = true;
+        }
+        rebuildFederationCache();
+        withdrawFederationDomainNode();
+        invalidateNeighbourCapabilities();
+    }
+
+    /** The Federation port capability exists only on the front face. */
+    public @Nullable FederationPort federationPort(@Nullable Direction face) {
+        return face != null && face == federationFace() ? new FederationPort(worldPosition, face) : null;
+    }
+
+    // ---- lifecycle
+
+    @Override
+    public void onReady() {
+        super.onReady();
+        if (!(level instanceof ServerLevel serverLevel) || runtime != null) {
+            return;
+        }
+        var placements = ProviderPlacementRegistry.get(serverLevel);
+        if (!placements.place(identity.id(), placement())) {
+            becomeCopy();
+            placements.place(identity.id(), placement());
+        }
+        federationDomainNodeId = FederationDomainRegistryAccess.nodeId(serverLevel, worldPosition);
+        runtime = new ProviderRuntime(serverLevel, getMainNode(), federationDomainNodeId, provider, identity,
+                new ProviderOrientation(ProviderNodeWiring.face(federationFace())), this::laneRequest, domains);
+        for (int laneIndex = 0; laneIndex < lanes.size(); laneIndex++) {
+            runtime.bindLane(laneIndex, lanes.get(laneIndex).revision);
+        }
+        runtime.settle();
+        ProviderObservationRegistry.attachController(provider, this);
+        if (getMainNode().getGrid() != null && !provider.registered()) {
+            provider.register();
+        }
+        rebuildFederationCache();
+        federationDomainDirty = true;
+        invalidateNeighbourCapabilities();
+    }
+
+    public static void serverTick(Level level, BlockPos position, BlockState state,
+            FederationPatternProviderBlockEntity provider) {
+        provider.tickServer();
+    }
+
+    private void tickServer() {
+        if (runtime == null) {
+            return;
+        }
+        if (pendingRotation) {
+            // Settled one tick after the orientation change, after the native node re-exposed its sides.
+            runtime.settle();
+            pendingRotation = false;
+        }
+        if (federationDomainDirty) {
+            publishFederationDomainTopology();
+        }
+        if (++maintenanceTicks >= MAINTENANCE_INTERVAL) {
+            maintenanceTicks = 0;
+            releaseDrainedLanes();
+            if (level instanceof ServerLevel serverLevel) {
+                bindReturns(serverLevel);
+            }
+        }
+    }
+
+    private void onGridChanged() {
+        provider.rebindGrid();
+        if (runtime != null && getMainNode().getGrid() != null && !provider.registered()) {
+            provider.register();
+        }
+        refreshFederationDomainEvidence();
+    }
+
+    @Override
+    public void onMainNodeStateChanged(IGridNodeListener.State reason) {
+        provider.onMainNodeStateChanged();
+        if (reason == IGridNodeListener.State.GRID_BOOT) {
+            // A boot keeps the node on the same Grid; the next tick publishes whatever identity it settles to.
+            federationDomainDirty = true;
+        }
+    }
+
+    @Override
+    public void onChunkUnloaded() {
+        unloading = true;
+        shutdown(false);
+        super.onChunkUnloaded();
+    }
+
+    @Override
+    public void setRemoved() {
+        shutdown(!unloading);
+        super.setRemoved();
+    }
+
+    @Override
+    public void clearRemoved() {
+        super.clearRemoved();
+        unloading = false;
+    }
+
+    private GlobalPos placement() {
+        return GlobalPos.of(level.dimension(), worldPosition);
+    }
+
+    /**
+     * Turns this Provider, placed from a structure or an item that carries another Provider's data, into a Provider of
+     * its own: a new identity and no Endpoint, so the Claims stay with the Provider they were made for. It keeps its
+     * Patterns and Lane count; a Pattern mapped to a Lane is unmapped, as for any Lane with no Endpoint.
+     */
+    private void becomeCopy() {
+        identity = ProviderIdentity.create();
+        for (int laneIndex = 0; laneIndex < lanes.size(); laneIndex++) {
+            lanes.get(laneIndex).retire();
+            unmapLane(laneIndex);
+        }
+        saveChanges();
+    }
+
+    private void unmapLane(int laneIndex) {
+        for (var slot : provider.slotsForLane(laneIndex)) {
+            var remaining = new TreeSet<>(provider.lanesForSlot(slot));
+            remaining.remove(laneIndex);
+            provider.replaceMapping(provider.mappingHandle(slot), remaining);
+        }
+    }
+
+    private void shutdown(boolean removedFromWorld) {
+        if (level instanceof ServerLevel serverLevel && runtime != null) {
+            detachReturns(serverLevel);
+        }
+        if (removedFromWorld && level instanceof ServerLevel serverLevel) {
+            releaseAllClaims(serverLevel);
+            ProviderPlacementRegistry.get(serverLevel).remove(identity.id(), placement());
+        }
+        if (runtime != null) {
+            provider.close();
+            runtime = null;
+        }
+        if (level instanceof ServerLevel serverLevel && federationDomainNodeId != null) {
+            FederationDomainRegistryAccess.removeNodeIfPresent(serverLevel, federationDomainNodeId, removedFromWorld);
+            reconcileServices(serverLevel);
+        }
+        federationCache = null;
+        federationDomainDirty = true;
+        publishedEvidence = null;
+    }
+
+    // ---- PatternProviderLogicHost: the owner logic is the native face of the Provider
+
+    @Override
+    public PatternProviderLogic getLogic() {
+        return owner;
+    }
+
+    @Override
+    public EnumSet<Direction> getTargets() {
+        return EnumSet.of(federationFace());
+    }
+
+    @Override
+    public IConfigManager getConfigManager() {
+        return configManager;
+    }
+
+    @Override
+    public int getPriority() {
+        return owner.getPriority();
+    }
+
+    @Override
+    public void setPriority(int priority) {
+        owner.setPriority(priority);
+        provider.setPriority(priority);
+        saveChanges();
+    }
+
+    @Override
+    public AEItemKey getTerminalIcon() {
+        return AEItemKey.of(ProcessingRegistration.PROVIDER_ITEM.get());
+    }
+
+    @Override
+    public ItemStack getMainMenuIcon() {
+        return ProcessingRegistration.PROVIDER_ITEM.get().getDefaultInstance();
+    }
+
+    /**
+     * The owner logic's upgrade slots: AE2's Pattern Provider has none, and an addon that adds them to AE2's provider
+     * logic, such as Applied Flux, adds them to the owner too, so the Provider has as many as AE2's own would.
+     */
+    public IUpgradeInventory upgrades() {
+        return (Object) owner instanceof IUpgradeableObject upgradeable ? upgradeable.getUpgrades()
+                : UpgradeInventories.empty();
+    }
+
+    /**
+     * The FE handlers of the machines touching the Endpoints this Provider's Lanes may push to now, each face of each
+     * Endpoint once, except its Federation face and Federation blocks. {@link ProviderEnergyRelay} fills them.
+     */
+    List<net.minecraftforge.energy.IEnergyStorage> endpointEnergyTargets() {
+        if (!(level instanceof ServerLevel serverLevel) || runtime == null) {
+            return List.of();
+        }
+        // An Endpoint may be in another dimension of the domain; its machines are in its own level.
+        var endpoints = new java.util.LinkedHashMap<net.minecraft.core.GlobalPos, Direction>();
+        var levels = new java.util.HashMap<net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level>,
+                ServerLevel>();
+        for (var lane : provider.nativeLanes()) {
+            space.controlnet.ae2federation.ae2.processing.FederationPatternProviderTargetCache.authorized(lane)
+                    // Lanes reach an Endpoint through the face opposite its Federation face.
+                    .ifPresent(target -> {
+                        levels.put(target.level().dimension(), target.level());
+                        endpoints.putIfAbsent(net.minecraft.core.GlobalPos.of(target.level().dimension(),
+                                target.position()), target.side().getOpposite());
+                    });
+        }
+        var targets = new ArrayList<net.minecraftforge.energy.IEnergyStorage>();
+        endpoints.forEach((endpoint, federation) -> {
+            var endpointLevel = levels.get(endpoint.dimension());
+            for (var face : Direction.values()) {
+                var machine = endpoint.pos().relative(face);
+                if (face == federation || !endpointLevel.isLoaded(machine) || federationBlock(endpointLevel, machine)) {
+                    continue;
+                }
+                var energy = Caps.find(endpointLevel, machine, net.minecraftforge.common.capabilities.ForgeCapabilities.ENERGY, face.getOpposite());
+                if (energy != null && !(energy instanceof ProviderEnergyRelay)) {
+                    targets.add(energy);
+                }
+            }
+        });
+        return targets;
+    }
+
+    /** Federation devices next to an Endpoint are not machines: FE sent into them would only travel on. */
+    private static boolean federationBlock(ServerLevel level, BlockPos position) {
+        var block = level.getBlockState(position).getBlock();
+        return block == ProcessingRegistration.ENDPOINT.get() || block == ProcessingRegistration.PROVIDER.get()
+                || block == space.controlnet.ae2federation.router.RouterRegistration.ROUTER.get()
+                || block == space.controlnet.ae2federation.router.RouterRegistration.SWITCH.get()
+                || block == space.controlnet.ae2federation.router.RouterRegistration.FEDERATION_CABLE.get();
+    }
+
+    /** The block in front answers with an FE relay only while this Provider faces it; tell the neighbours to ask again. */
+    private void invalidateNeighbourCapabilities() {
+        if (level instanceof ServerLevel serverLevel) {
+            for (var direction : Direction.values()) {
+                Caps.invalidate(serverLevel, worldPosition.relative(direction));
+            }
+        }
+    }
+
+    public MappedPatternProvider mappedProvider() {
+        return provider;
+    }
+
+    public ProviderIdentity providerIdentity() {
+        return identity;
+    }
+
+    public Optional<ProviderRuntime> runtime() {
+        return Optional.ofNullable(runtime);
+    }
+
+    public int laneCount() {
+        return lanes.size();
+    }
+
+    public NativeProviderLane lane(int laneIndex) {
+        return provider.nativeLane(laneIndex);
+    }
+
+    /** Lane index serving {@code endpoint}, if the Endpoint is mapped or still draining native work. */
+    public Optional<Integer> laneFor(EndpointIdentity endpoint) {
+        for (int index = 0; index < lanes.size(); index++) {
+            if (endpoint.equals(lanes.get(index).endpoint)) {
+                return Optional.of(index);
+            }
+        }
+        return Optional.empty();
+    }
+
+    // ---- mapping
+
+    @Override
+    public String toggleEndpoint(PatternSlotHandle handle, EndpointTargetBinding endpoint) {
+        if (!(level instanceof ServerLevel serverLevel) || runtime == null) {
+            return "rejected-provider-offline";
+        }
+        var slot = handle.slot();
+        if (slot < 0 || slot >= PATTERN_SLOTS) {
+            return "rejected-invalid-selection";
+        }
+        var endpointIdentity = endpoint.endpointIdentity();
+        var existing = laneFor(endpointIdentity);
+        var assigned = new TreeSet<>(provider.lanesForSlot(slot));
+        if (existing.isPresent() && assigned.contains(existing.get())) {
+            assigned.remove(existing.get());
+            if (!provider.replaceMapping(handle, assigned)) {
+                return "rejected-stale-slot";
+            }
+            lanes.get(existing.get()).mappingRevision++;
+            if (provider.slotsForLane(existing.get()).isEmpty()) {
+                lanes.get(existing.get()).releasePending = true;
+                releaseDrainedLanes();
+            }
+            saveChanges();
+            return "accepted-" + slot + "-" + handle.generation();
+        }
+        if (provider.mappingHandle(slot).generation() != handle.generation()) {
+            return "rejected-stale-slot";
+        }
+        // Only a slot with a pattern gains Endpoints; unmapping above stays allowed for a slot emptied since.
+        if (getTerminalPatternInventory().getStackInSlot(slot).isEmpty()) {
+            return "rejected-invalid-selection";
+        }
+        if (!reaches(endpoint)) {
+            return "rejected-domain-disconnected";
+        }
+        int laneIndex;
+        if (existing.isPresent()) {
+            laneIndex = existing.get();
+            lanes.get(laneIndex).releasePending = false;
+        } else {
+            var claimed = claim(endpoint);
+            if (claimed.isEmpty()) {
+                return "rejected-" + endpoint.lastClaimResultCode().toLowerCase(java.util.Locale.ROOT);
+            }
+            laneIndex = allocateLane(endpoint, claimed.orElseThrow());
+        }
+        assigned.add(laneIndex);
+        if (!provider.replaceMapping(handle, assigned)) {
+            return "rejected-stale-slot";
+        }
+        lanes.get(laneIndex).mappingRevision++;
+        saveChanges();
+        return "accepted-" + slot + "-" + handle.generation();
+    }
+
+    /** The domain this Provider's Federation face is a node of; its Lanes may use only that domain's Endpoints. */
+    public Optional<FederationDomainSnapshot> federationDomain() {
+        return level instanceof ServerLevel serverLevel && federationDomainNodeId != null
+                ? FederationDomainRegistryAccess.get(serverLevel).federationDomainOf(federationDomainNodeId)
+                : Optional.empty();
+    }
+
+    private boolean reaches(EndpointTargetBinding endpoint) {
+        var endpointNode = FederationDomainRegistryAccess.nodeId(endpoint.level(), endpoint.runtime().position());
+        return federationDomain().filter(domain -> domain.nodes().contains(endpointNode)).isPresent();
+    }
+
+    /** The level a Lane's Endpoint is in, or null while that dimension is not loaded. */
+    private @Nullable ServerLevel endpointLevel(ServerLevel serverLevel, LaneBinding binding) {
+        return binding.dimension == null ? serverLevel : serverLevel.getServer().getLevel(binding.dimension);
+    }
+
+    /** Whether a Lane's Endpoint position is loaded, in the Endpoint's own level. */
+    private boolean endpointLoaded(ServerLevel serverLevel, LaneBinding binding) {
+        var endpointLevel = endpointLevel(serverLevel, binding);
+        return endpointLevel != null && endpointLevel.isLoaded(binding.position);
+    }
+
+    /** Filled pattern slots of all slots, and the Endpoint mappings they hold, as the Provider's screen counts them. */
+    public record PatternSummary(int used, int total, int mappings) {
+    }
+
+    public PatternSummary patternSummary() {
+        var inventory = provider.patternInventory();
+        int used = 0;
+        int mappings = 0;
+        for (int slot = 0; slot < inventory.size(); slot++) {
+            if (!inventory.getStackInSlot(slot).isEmpty()) used++;
+            mappings += endpointsForSlot(slot).size();
+        }
+        return new PatternSummary(used, inventory.size(), mappings);
+    }
+
+    @Override
+    public Set<EndpointIdentity> endpointsForSlot(int slot) {
+        var result = new java.util.LinkedHashSet<EndpointIdentity>();
+        for (var laneIndex : provider.lanesForSlot(slot)) {
+            var endpoint = lanes.get(laneIndex).endpoint;
+            if (endpoint != null) {
+                result.add(endpoint);
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public Optional<EndpointIdentity> laneEndpoint(int laneIndex) {
+        return laneIndex < 0 || laneIndex >= lanes.size() ? Optional.empty()
+                : Optional.ofNullable(lanes.get(laneIndex).endpoint);
+    }
+
+    /**
+     * Where Lane {@code laneIndex}'s Endpoint was bound, as the Lane saved it, loaded or not; empty for an unbound Lane.
+     * A binding saved before Endpoints could be in another dimension is in this Provider's.
+     */
+    public Optional<net.minecraft.core.GlobalPos> laneEndpointPlace(int laneIndex) {
+        if (laneIndex < 0 || laneIndex >= lanes.size() || lanes.get(laneIndex).endpoint == null || level == null) {
+            return Optional.empty();
+        }
+        var binding = lanes.get(laneIndex);
+        return Optional.of(net.minecraft.core.GlobalPos.of(binding.dimension != null ? binding.dimension
+                : level.dimension(), binding.position));
+    }
+
+    @Override
+    public boolean retained(EndpointIdentity endpoint) {
+        return laneFor(endpoint).filter(index -> lanes.get(index).releasePending).isPresent();
+    }
+
+    @Override
+    public Set<EndpointIdentity> retainedEndpoints() {
+        var result = new java.util.LinkedHashSet<EndpointIdentity>();
+        for (var binding : lanes) {
+            if (binding.endpoint != null && binding.releasePending) {
+                result.add(binding.endpoint);
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public Optional<ReleaseConfirmation> releaseConfirmation(EndpointIdentity endpoint) {
+        return laneFor(endpoint).filter(index -> lanes.get(index).releasePending).map(index -> {
+            var binding = lanes.get(index);
+            String observation = "unloaded";
+            Object endpointInstance = null;
+            if (level instanceof ServerLevel serverLevel && endpointLoaded(serverLevel, binding)) {
+                endpointInstance = endpointLevel(serverLevel, binding).getBlockEntity(binding.position);
+                observation = endpointInstance instanceof EndpointBlockEntity entity
+                        ? entity.endpointIdentity() + ":" + entity.claimState() : "absent";
+            }
+            return new ReleaseConfirmation(this, index, binding.revision, binding.mappingRevision,
+                    endpoint, binding.epoch, endpointInstance, observation);
+        });
+    }
+
+    @Override
+    public String releaseEndpoint(EndpointIdentity endpoint) {
+        if (!(level instanceof ServerLevel serverLevel) || runtime == null) {
+            return "rejected-provider-offline";
+        }
+        var laneIndex = laneFor(endpoint);
+        if (laneIndex.isEmpty()) {
+            return "rejected-not-retained";
+        }
+        var index = laneIndex.get();
+        var binding = lanes.get(index);
+        if (!binding.releasePending || !provider.slotsForLane(index).isEmpty()) {
+            return "rejected-still-mapped";
+        }
+        var lane = provider.nativeLane(index);
+        if (lane.hasPendingSend()) {
+            // Native send remainder is only delivered to this Endpoint; releasing now would strand it in the Lane.
+            return "rejected-pending-send";
+        }
+        if (!lane.getReturnInv().isEmpty()) {
+            return "rejected-pending-return";
+        }
+        if (!endpointLoaded(serverLevel, binding)) {
+            return "rejected-endpoint-unloaded";
+        }
+        var released = false;
+        if (endpointLevel(serverLevel, binding).getBlockEntity(binding.position) instanceof EndpointBlockEntity entity
+                && entity.endpointIdentity().equals(binding.endpoint)) {
+            var ownerIdentity = new EndpointOwnerIdentity(identity);
+            var state = entity.claimState();
+            if (state.epoch().equals(binding.epoch) && state.owner().filter(ownerIdentity::equals).isPresent()) {
+                if (!entity.releaseClaim(ownerIdentity, binding.epoch)) {
+                    return "rejected-claim-changed";
+                }
+                released = true;
+            }
+        }
+        // The result can no longer return to this Lane, so its native lock is reset as on a Lock mode change.
+        lane.resetCraftingLock();
+        binding.retire();
+        runtime.bindLane(index, binding.revision);
+        saveChanges();
+        return (released ? "released-" : "cleared-stale-") + index;
+    }
+
+    private Optional<ClaimEpoch> claim(EndpointTargetBinding endpoint) {
+        var position = endpoint.runtime().position();
+        if (!(endpoint.level().getBlockEntity(position) instanceof EndpointBlockEntity entity)
+                || !entity.endpointIdentity().equals(endpoint.endpointIdentity())) {
+            return Optional.empty();
+        }
+        var result = entity.claim(new ClaimRequest(entity.endpointIdentity(), entity.claimState().epoch(),
+                new EndpointOwnerIdentity(identity)));
+        if (result instanceof ClaimResult.Rejected || !entity.activateFederated()) {
+            return Optional.empty();
+        }
+        return Optional.of(entity.claimState().epoch());
+    }
+
+    private int allocateLane(EndpointTargetBinding endpoint, ClaimEpoch epoch) {
+        var position = endpoint.runtime().position();
+        var dimension = endpoint.level().dimension();
+        for (int index = 0; index < lanes.size(); index++) {
+            var binding = lanes.get(index);
+            if (binding.endpoint == null && laneIdle(index)) {
+                // Reuse a drained Lane; its new revision rejects returns authorized for the previous Endpoint.
+                binding.bind(endpoint.endpointIdentity(), dimension, position, epoch);
+                provider.nativeLane(index).resetCraftingLock();
+                runtime.bindLane(index, binding.revision);
+                return index;
+            }
+        }
+        var binding = new LaneBinding();
+        binding.bind(endpoint.endpointIdentity(), dimension, position, epoch);
+        return appendLane(binding);
+    }
+
+    /** Appends a Lane with the owner's settings; a running Provider also binds it. */
+    private int appendLane(LaneBinding binding) {
+        lanes.add(binding);
+        var laneIndex = provider.addLane(new LaneHost(lanes.size() - 1));
+        configManager.applyTo(provider.nativeLane(laneIndex));
+        provider.nativeLane(laneIndex).setPriority(owner.getPriority());
+        if (runtime != null) {
+            runtime.bindLane(laneIndex, binding.revision);
+        }
+        return laneIndex;
+    }
+
+    private boolean laneIdle(int laneIndex) {
+        var lane = provider.nativeLane(laneIndex);
+        return !lane.hasPendingSend() && lane.getReturnInv().isEmpty();
+    }
+
+    /**
+     * Releases the Claim of an unmapped Lane only when it provably has no work in the machine: it never sent a Pattern
+     * under its current binding and its native send list and return buffer are empty. Empty native buffers do not prove
+     * that the machine finished work already sent, and no native state does, so a Lane that sent work keeps its Claim
+     * and return path after unmapping until it is mapped again, explicitly released or its Provider is removed.
+     */
+    private void releaseDrainedLanes() {
+        if (!(level instanceof ServerLevel serverLevel) || runtime == null) {
+            return;
+        }
+        for (int index = 0; index < lanes.size(); index++) {
+            var binding = lanes.get(index);
+            if (!binding.releasePending || binding.endpoint == null || binding.dispatched || !laneIdle(index)
+                    || !provider.slotsForLane(index).isEmpty()) {
+                continue;
+            }
+            if (!endpointLoaded(serverLevel, binding)) {
+                continue;
+            }
+            if (endpointLevel(serverLevel, binding).getBlockEntity(binding.position) instanceof EndpointBlockEntity entity
+                    && entity.endpointIdentity().equals(binding.endpoint)) {
+                if (!entity.releaseClaim(new EndpointOwnerIdentity(identity), binding.epoch)) {
+                    continue;
+                }
+            } else {
+                // Missing or replaced Endpoints require explicit local cleanup, never automatic retirement.
+                continue;
+            }
+            binding.retire();
+            runtime.bindLane(index, binding.revision);
+            saveChanges();
+        }
+    }
+
+    private void detachReturns(ServerLevel serverLevel) {
+        for (int index = 0; index < lanes.size(); index++) {
+            var binding = lanes.get(index);
+            if (binding.endpoint == null) {
+                continue;
+            }
+            var endpointLevel = endpointLevel(serverLevel, binding);
+            var endpoint = endpointLevel == null ? null : EndpointTargetBinding.findEndpoint(endpointLevel, binding.position);
+            if (endpoint != null) {
+                endpoint.runtime().detachReturn(provider.nativeLane(index));
+            }
+        }
+    }
+
+    /**
+     * Restores the return path of each bound Lane whose loaded Endpoint does not return to it, through the same
+     * authorization as a native push (Provider, Endpoint identity, Claim epoch, Lane identity and Policy). This covers
+     * a reloaded Provider (new Lane objects) and a reloaded Endpoint (new runtime without return context) even while
+     * the native lock prevents the push that would otherwise rebind it. Lanes whose Endpoint is unloaded, replaced or
+     * unauthorized stay detached and are retried here; the check reads only this Provider's own Lanes.
+     */
+    private void bindReturns(ServerLevel serverLevel) {
+        for (int index = 0; index < lanes.size(); index++) {
+            var binding = lanes.get(index);
+            if (binding.endpoint == null) {
+                continue;
+            }
+            var endpointLevel = endpointLevel(serverLevel, binding);
+            var endpoint = endpointLevel == null ? null : EndpointTargetBinding.findEndpoint(endpointLevel, binding.position);
+            var lane = provider.nativeLane(index);
+            if (endpoint != null && endpoint.endpointIdentity().equals(binding.endpoint)
+                    && !endpoint.runtime().returnOwnedBy(lane)) {
+                space.controlnet.ae2federation.ae2.processing.FederationPatternProviderTargetCache.find(lane);
+            }
+        }
+    }
+
+    private void releaseAllClaims(ServerLevel serverLevel) {
+        var ownerIdentity = new EndpointOwnerIdentity(identity);
+        var unreleased = false;
+        for (var binding : lanes) {
+            if (binding.endpoint == null) {
+                continue;
+            }
+            if (endpointLoaded(serverLevel, binding)
+                    && endpointLevel(serverLevel, binding).getBlockEntity(binding.position) instanceof EndpointBlockEntity entity
+                    && entity.endpointIdentity().equals(binding.endpoint)) {
+                entity.releaseClaim(ownerIdentity, binding.epoch);
+            } else {
+                unreleased = true;
+            }
+        }
+        if (unreleased) {
+            RetiredProviderRegistry.get(serverLevel).retire(identity.id());
+        }
+    }
+
+    private @Nullable ProviderTargetRequest laneRequest(int laneIndex) {
+        if (laneIndex < 0 || laneIndex >= lanes.size()) {
+            return null;
+        }
+        var binding = lanes.get(laneIndex);
+        if (binding.endpoint == null) {
+            return null;
+        }
+        var endpointLevel = level instanceof ServerLevel serverLevel ? endpointLevel(serverLevel, binding) : null;
+        return new ProviderTargetRequest(identity, binding.endpoint, binding.epoch, binding.position,
+                endpointLevel == null ? Direction.DOWN : endpointAccessSide(endpointLevel, binding.position), true,
+                binding.dimension);
+    }
+
+    // ---- Domain (Federation Domain) port on the front face
+
+    private void rebuildFederationCache() {
+        if (!(level instanceof ServerLevel serverLevel) || runtime == null) {
+            federationCache = null;
+            return;
+        }
+        var face = federationFace();
+        federationCache = Caps.Cache.create(FederationPortCapability.BLOCK, serverLevel,
+                worldPosition.relative(face), face.getOpposite(), () -> !isRemoved(), this::recheckFederationPeer);
+    }
+
+    public void neighborChanged(BlockPos neighborPosition) {
+        owner.updateRedstoneState();
+        provider.updateRedstoneState();
+        if (worldPosition.relative(federationFace()).equals(neighborPosition)
+                && level instanceof ServerLevel serverLevel && federationDomainNodeId != null && runtime != null
+                && !evidence(serverLevel).equals(publishedEvidence)) {
+            // A block placed in front that is not a Federation port leaves the evidence, and so the domain, as it is.
+            publishFederationDomainTopology();
+        }
+    }
+
+    /**
+     * Some capability of the front neighbour changed, such as an Endpoint's item handlers when it is claimed: publish
+     * the evidence again on the next tick, which leaves the domain as it is when the link is the same. A changed
+     * neighbour block reaches {@link #neighborChanged}, which republishes a changed link at once.
+     */
+    private void recheckFederationPeer() {
+        federationDomainDirty = true;
+    }
+
+    /** A rotation moves the Federation face: the link of the old front must not outlive it by a tick. */
+    private void withdrawFederationDomainNode() {
+        federationDomainDirty = true;
+        publishedEvidence = null;
+        if (level instanceof ServerLevel serverLevel && federationDomainNodeId != null) {
+            FederationDomainRegistryAccess.invalidateNodeIfPresent(serverLevel, federationDomainNodeId,
+                    FederationDomainInvalidationReason.TOPOLOGY_CHANGED);
+        }
+    }
+
+    /**
+     * The node moved to another Grid, inside AE2's Grid propagation: replace the membership in the registry at once, so
+     * no domain keeps the old network, and leave the bindings to the next tick's publication, outside propagation.
+     */
+    private void refreshFederationDomainEvidence() {
+        federationDomainDirty = true;
+        if (level instanceof ServerLevel serverLevel && federationDomainNodeId != null && runtime != null) {
+            FederationDomainRegistryAccess.get(serverLevel).upsertNode(evidence(serverLevel));
+        }
+    }
+
+    private void publishFederationDomainTopology() {
+        if (!(level instanceof ServerLevel serverLevel) || federationDomainNodeId == null) {
+            return;
+        }
+        federationDomainDirty = false;
+        publishedEvidence = evidence(serverLevel);
+        FederationDomainRegistryAccess.get(serverLevel).upsertNode(publishedEvidence);
+        FederationBindingRefresh.request(serverLevel, () -> {
+            var grid = getMainNode().getGrid();
+            return grid == null ? List.of() : List.of(grid);
+        });
+    }
+
+    private FederationDomainNodeEvidence evidence(ServerLevel serverLevel) {
+        var evidence = new java.util.TreeMap<String, FederationDomainPortEvidence>();
+        var peer = federationPeer(serverLevel);
+        var grid = getMainNode().getGrid();
+        if (peer != null && grid != null) {
+            var remoteNode = FederationDomainRegistryAccess.nodeId(serverLevel, peer);
+            // Port ids are face names so the Cable's reciprocal evidence (which names this face) matches.
+            evidence.put(federationFace().getSerializedName(), new FederationDomainPortEvidence.Federation(
+                    new FederationDomainPortId(remoteNode, peer.outwardFace().getSerializedName())));
+            evidence.put(NATIVE_PORT, FederationDomainRegistryAccess.nativeEvidence(grid, new FederationDomainPortId(federationDomainNodeId,
+                    NATIVE_PORT)));
+        }
+        return new FederationDomainNodeEvidence(federationDomainNodeId, FederationDomainNodeKind.PATTERN_PROVIDER,
+                evidence);
+    }
+
+    private @Nullable FederationPort federationPeer(ServerLevel serverLevel) {
+        var face = federationFace();
+        var neighbor = worldPosition.relative(face);
+        if (federationCache == null || !serverLevel.isLoaded(neighbor)) {
+            return null;
+        }
+        var port = federationCache.getCapability();
+        var own = new FederationPort(worldPosition, face);
+        return port != null && own.connectsTo(port) ? port : null;
+    }
+
+    private static void reconcileServices(ServerLevel serverLevel) {
+        FederationBindingRefresh.request(serverLevel);
+    }
+
+    // ---- drops and persistence
+
+    @Override
+    public void addAdditionalDrops(Level level, BlockPos pos, List<ItemStack> drops) {
+        super.addAdditionalDrops(level, pos, drops);
+        // The owner logic is the single drop owner of the Pattern slots; Lanes own no Pattern slots, only their
+        // native send remainder and return buffer, which AE2's own addDrops emits.
+        owner.addDrops(drops);
+        provider.addDrops(drops);
+    }
+
+    @Override
+    public void clearContent() {
+        super.clearContent();
+        owner.clearContent();
+        provider.nativeLanes().forEach(PatternProviderLogic::clearContent);
+    }
+
+    @Override
+    public void saveAdditional(CompoundTag tag) {
+        super.saveAdditional(tag);
+        tag.putInt(SCHEMA_TAG, SCHEMA);
+        var identityTag = new CompoundTag();
+        ProviderIdentityCodec.save(identityTag, identity);
+        tag.put(IDENTITY_TAG, identityTag);
+        var ownerTag = new CompoundTag();
+        owner.writeToNBT(ownerTag);
+        tag.put(OWNER_TAG, ownerTag);
+        var laneList = new ListTag();
+        lanes.forEach(binding -> laneList.add(binding.save()));
+        tag.put(LANES_TAG, laneList);
+        var providerTag = new CompoundTag();
+        provider.writeToNBT(providerTag);
+        tag.put(PROVIDER_TAG, providerTag);
+    }
+
+    @Override
+    public void loadTag(CompoundTag tag) {
+        super.loadTag(tag);
+        if (!tag.contains(SCHEMA_TAG, Tag.TAG_INT)) {
+            return;
+        }
+        if (tag.getInt(SCHEMA_TAG) != SCHEMA) {
+            throw new IllegalArgumentException("Unsupported Federation Pattern Provider schema");
+        }
+        var laneList = tag.getList(LANES_TAG, Tag.TAG_COMPOUND);
+        if (runtime == null && lanes.isEmpty()) {
+            identity = ProviderIdentityCodec.load(tag.getCompound(IDENTITY_TAG));
+            owner.readFromNBT(tag.getCompound(OWNER_TAG));
+            for (var raw : laneList) {
+                lanes.add(LaneBinding.load((CompoundTag) raw));
+                provider.addLane(new LaneHost(lanes.size() - 1));
+            }
+            provider.readFromNBT(tag.getCompound(PROVIDER_TAG));
+            return;
+        }
+        // Loaded into a Provider that already exists, as by /data merge block or a tool that writes data into a placed
+        // block. The data may come from another Provider, so the identity and the Lanes' Endpoint bindings stay as
+        // they are; Claims are only ever made by this Provider. Lanes the data has beyond the existing ones are added
+        // unbound, and a Pattern mapped to an unbound Lane is unmapped. A bound Lane left with no Pattern waits for
+        // release, as after the player unmaps it.
+        owner.readFromNBT(tag.getCompound(OWNER_TAG));
+        while (lanes.size() < laneList.size()) {
+            var unbound = new LaneBinding();
+            unbound.retire();
+            appendLane(unbound);
+        }
+        var slotsBefore = new ArrayList<Set<Integer>>();
+        for (int laneIndex = 0; laneIndex < lanes.size(); laneIndex++) {
+            slotsBefore.add(provider.slotsForLane(laneIndex));
+        }
+        provider.readFromNBT(tag.getCompound(PROVIDER_TAG));
+        for (int laneIndex = 0; laneIndex < lanes.size(); laneIndex++) {
+            var binding = lanes.get(laneIndex);
+            if (binding.endpoint == null) {
+                unmapLane(laneIndex);
+                continue;
+            }
+            var slotsAfter = provider.slotsForLane(laneIndex);
+            if (!slotsAfter.equals(slotsBefore.get(laneIndex))) {
+                binding.mappingRevision++;
+                binding.releasePending = slotsAfter.isEmpty();
+            }
+        }
+    }
+
+    // ---- nested types
+
+    /** Native host of one Lane: same block entity, Federation face as its only target side. */
+    private final class LaneHost implements PatternProviderLogicHost, NativeLaneDispatchListener {
+        private final int laneIndex;
+
+        private LaneHost(int laneIndex) {
+            this.laneIndex = laneIndex;
+        }
+
+        @Override
+        public PatternProviderLogic getLogic() {
+            return provider.nativeLane(laneIndex);
+        }
+
+        @Override
+        public void onLaneDispatched() {
+            var binding = lanes.get(laneIndex);
+            if (binding.endpoint != null && !binding.dispatched) {
+                binding.dispatched = true;
+                FederationPatternProviderBlockEntity.this.saveChanges();
+            }
+        }
+
+        @Override
+        public net.minecraft.world.level.block.entity.BlockEntity getBlockEntity() {
+            return FederationPatternProviderBlockEntity.this;
+        }
+
+        @Override
+        public EnumSet<Direction> getTargets() {
+            return EnumSet.of(federationFace());
+        }
+
+        @Override
+        public void saveChanges() {
+            FederationPatternProviderBlockEntity.this.saveChanges();
+        }
+
+        @Override
+        public AEItemKey getTerminalIcon() {
+            return FederationPatternProviderBlockEntity.this.getTerminalIcon();
+        }
+
+        @Override
+        public ItemStack getMainMenuIcon() {
+            return FederationPatternProviderBlockEntity.this.getMainMenuIcon();
+        }
+    }
+
+    private static final class LaneBinding {
+        private @Nullable EndpointIdentity endpoint;
+        /** The Endpoint's dimension; null in saves from before Endpoints could be in another one: the Provider's own. */
+        private net.minecraft.resources.@Nullable ResourceKey<net.minecraft.world.level.Level> dimension;
+        private BlockPos position = BlockPos.ZERO;
+        private ClaimEpoch epoch = ClaimEpoch.NONE;
+        private long revision;
+        private long mappingRevision;
+        private boolean releasePending;
+        /** Set once the Lane sent a Pattern under this binding; work may then be inside the machine. */
+        private boolean dispatched;
+
+        private void bind(EndpointIdentity endpoint,
+                net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension, BlockPos position,
+                ClaimEpoch epoch) {
+            this.endpoint = endpoint;
+            this.dimension = dimension;
+            this.position = position.immutable();
+            this.epoch = epoch;
+            revision = Math.incrementExact(revision);
+            releasePending = false;
+            dispatched = false;
+        }
+
+        private void retire() {
+            endpoint = null;
+            epoch = ClaimEpoch.NONE;
+            revision = Math.incrementExact(revision);
+            releasePending = false;
+            dispatched = false;
+        }
+
+        private CompoundTag save() {
+            var tag = new CompoundTag();
+            tag.putLong("revision", revision);
+            tag.putBoolean("releasePending", releasePending);
+            tag.putBoolean("dispatched", dispatched);
+            if (endpoint != null) {
+                tag.putUUID("endpoint", endpoint.id().value());
+                tag.putLong("endpointEpoch", endpoint.instanceEpoch().value());
+                tag.put("position", NbtUtils.writeBlockPos(position));
+                if (dimension != null) {
+                    tag.putString("dimension", dimension.location().toString());
+                }
+                tag.putLong("claimEpoch", epoch.value());
+            }
+            return tag;
+        }
+
+        private static LaneBinding load(CompoundTag tag) {
+            var binding = new LaneBinding();
+            binding.revision = Math.max(1, tag.getLong("revision"));
+            binding.releasePending = tag.getBoolean("releasePending");
+            if (tag.hasUUID("endpoint")) {
+                binding.endpoint = new EndpointIdentity(new EndpointId(tag.getUUID("endpoint")),
+                        new EndpointInstanceEpoch(tag.getLong("endpointEpoch")));
+                binding.position = (tag.contains("position") ? NbtUtils.readBlockPos(tag.getCompound("position")) : BlockPos.ZERO);
+                var dimension = net.minecraft.resources.ResourceLocation.tryParse(tag.getString("dimension"));
+                if (tag.contains("dimension") && dimension != null) {
+                    binding.dimension = net.minecraft.resources.ResourceKey.create(
+                            net.minecraft.core.registries.Registries.DIMENSION, dimension);
+                }
+                binding.epoch = new ClaimEpoch(tag.getLong("claimEpoch"));
+                // Saves from before this flag existed cannot prove the Lane never sent work, so they keep the Claim.
+                binding.dispatched = !tag.contains("dispatched") || tag.getBoolean("dispatched");
+            }
+            return binding;
+        }
+    }
+
+    /**
+     * Config manager exposed to AE2's menu and memory card: it reads and writes the owner's native settings and writes
+     * every change through to each Lane's own native config manager, so each Lane applies Blocking and Lock Crafting
+     * with native semantics (including the native lock reset on a Lock mode change).
+     */
+    static final class LaneConfigManager implements IConfigManager {
+        private final IConfigManager ownerSettings;
+        private final java.util.function.Supplier<List<NativeProviderLane>> lanes;
+
+        LaneConfigManager(IConfigManager ownerSettings, java.util.function.Supplier<List<NativeProviderLane>> lanes) {
+            this.ownerSettings = ownerSettings;
+            this.lanes = lanes;
+        }
+
+        void applyTo(NativeProviderLane lane) {
+            for (var setting : ownerSettings.getSettings()) {
+                copy(setting, lane.getConfigManager());
+            }
+        }
+
+        @Override
+        public Set<Setting<?>> getSettings() {
+            return ownerSettings.getSettings();
+        }
+
+        @Override
+        public <T extends Enum<T>> T getSetting(Setting<T> setting) {
+            return ownerSettings.getSetting(setting);
+        }
+
+        @Override
+        public <T extends Enum<T>> void putSetting(Setting<T> setting, T newValue) {
+            ownerSettings.putSetting(setting, newValue);
+            for (var lane : lanes.get()) {
+                lane.getConfigManager().putSetting(setting, newValue);
+            }
+        }
+
+        @Override
+        public void writeToNBT(CompoundTag destination) {
+            ownerSettings.writeToNBT(destination);
+        }
+
+        @Override
+        public boolean readFromNBT(CompoundTag source) {
+            var changed = ownerSettings.readFromNBT(source);
+            lanes.get().forEach(this::applyTo);
+            return changed;
+        }
+
+        @Override
+        public <T extends Enum<T>> void registerSetting(Setting<T> setting, T defaultValue) {
+            ownerSettings.registerSetting(setting, defaultValue);
+        }
+
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+        private void copy(Setting setting, IConfigManager target) {
+            var value = ownerSettings.getSetting(setting);
+            if (target.hasSetting(setting) && target.getSetting(setting) != value) {
+                target.putSetting(setting, value);
+            }
+        }
+    }
+}

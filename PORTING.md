@@ -40,6 +40,10 @@ Compiled against the real Forge 1.20.1 + AE2 15.4.10 + LDLib 1 classes (javac -s
 - 0008: removed Java 21-only calls (List.getFirst/getLast, Math.TAU); scripts/check17 scans bytecode for more.
 - 0009: +8 SavedData classes (SavedData.Factory -> computeIfAbsent(load, new, name), save/load without HolderLookup.Provider,
   AEKey NBT without provider, DataResult.getOrThrow with the 1.20.1 signature). 294 files compile clean.
+- 0014: the rest of the non-GUI tree: pattern-provider layer on AE2 15, GlobalCraftingProviders, client rendering
+  (RenderStates shim, 1.20.1 vertex API, QuadBaker adapter), block entities, registries, 6 mixins (not registered yet).
+  454 files compile together on a Java 17 language level against the real Forge/AE2 15/LDLib 1 classes; bytecode scan finds
+  no Java 18+ API.
 - 0012: small blockers (tick events -> TickEvent.LevelTickEvent, BlockPos.min/max helper, 1.20.1 shouldTickBlocksAt),
   QuantumCardData (card link as NBT instead of a data component), policy menu stub, wrench tag from AE2 15 ConventionTags.
 - 0011: capability layer (CapProviders attach rules, Caps lookup/cache stand-in, ItemInteractionResult shim).
@@ -54,21 +58,13 @@ Real size of what is left (correcting an earlier overestimate that counted tests
 - 46 deferred: 20 use LDLib2 (GUI rewrite on LDLib 1), 27 mixins / Jade (re-target against AE2 15; Jade not a dependency yet)
 - + 12 NeoForge entrypoint/network files in neoforge-1.21.1 to redo as Forge SimpleChannel + @Mod entrypoint
 
-## Pattern-provider / AE2 15 layer (done in the working tree, lands with the client stack)
-AE2 15 differs from 19 in ways the code relies on; all handled without touching AE2:
-- Global crafting providers (`ICraftingService.add/remove/refreshGlobalCraftingProvider`) do not exist in AE2 15, whose
-  providers are always keyed by grid node. `ae2/GlobalCraftingProviders` registers a provider into
-  `NetworkCraftingProviders` through AE2 15's node-independent `ProviderState` (reflection), replacing the
-  `CraftingGlobalProviderLifecycleMixin` and three accessor mixins.
-- `PatternProviderLogic` host API: `saveChanges()` + `onChangeInventory(InternalInventory,int)` (19 had AppEngInternalInventory variants).
-- `IConfigManager`: `registerSetting` instead of `importSettings`/`exportSettings`; `IPatternDetails.getOutputs()` is an array;
-  `TickingRequest` has the extra `alertable` flag; parts use `onPartActivate`; `GenericInternalInventory.isAllowed(AEKey)`.
-- Mixin targets checked statically against AE2 15: CableBusContainer.addToWorld, PatternProviderLogic.{findAdapter,pushPattern,
-  patterns,patternInputs,sendList}, StorageService.onServerEndTick, CraftingService.insertIntoCpus, NetworkStorage.priorityInventory all exist.
-
-## Next: client rendering stack (20 files, ~100 errors; everything else waits on it through references)
-- RenderStateShard statics are protected in 1.20.1 -> a RenderStateShard subclass that re-exports them.
-- 1.21 vertex API (addVertex/setColor/setUv/setNormal, ByteBufferBuilder, MeshData) -> 1.20.1 vertex().color().uv().normal().endVertex().
-- FaceBakery.bakeQuad / QuadBakingVertexConsumer signatures, RenderLevelStageEvent stages, ClientTickEvent -> TickEvent.ClientTickEvent,
-  RegisterRenderBuffersEvent (1.21 only).
-- Still needed on my classpath: mixinextras-common (3 mixins use WrapMethod/WrapOperation) and lwjgl-glfw (FederationScreenSwitch).
+## What exists, and what does not (honest status)
+Compiles, never run. Nothing here has been launched in Minecraft.
+- NOT done: the `@Mod` entrypoint (neoforge-1.21.1 `NeoForgeEntrypoint` is the blueprint), the network packets (10+ payloads ->
+  SimpleChannel), registering the capability types and `CapProviders` on the buses, the mixin config + MDG mixin setup + jarJar of
+  MixinExtras, the client mixin `MouseHandlerAccess` (needs an access transformer or refmap), and every datagen/asset check.
+- NOT ported: all LDLib2 GUI files (20, client/menu + client/policy views) -> rewrite on LDLib 1; Jade tooltips (Jade not a dependency
+  yet); AE2 guide integration (AE2 15 has no guide); Data Energistics compat (no 1.20.1 build); tests.
+- Stubs that stand in for the GUI: `client/menu/FederationDomainPolicyMenu` (opens nothing), `FederationScreenSwitch` (provider screen only).
+- Runtime risks to check first: capability registration timing, `GlobalCraftingProviders` reflection against AE2 15.4.10, the 6 mixin
+  targets (verified to exist statically only), render types registering without RegisterRenderBuffersEvent.

@@ -28,6 +28,11 @@ public enum ItemInteractionResult {
         return result;
     }
 
+    /** 1.20.1 {@code InteractionResult.sidedSuccess}: SUCCESS on the client, CONSUME on the server. */
+    public static ItemInteractionResult sidedSuccess(boolean clientSide) {
+        return clientSide ? SUCCESS : CONSUME;
+    }
+
     public static InteractionResult bridge(ItemInteractionResult withItem, java.util.function.Supplier<InteractionResult> without) {
         var answer = withItem.result();
         return answer != null ? answer : without.get();
