@@ -40,6 +40,8 @@ Compiled against the real Forge 1.20.1 + AE2 15.4.10 + LDLib 1 classes (javac -s
 - 0008: removed Java 21-only calls (List.getFirst/getLast, Math.TAU); scripts/check17 scans bytecode for more.
 - 0009: +8 SavedData classes (SavedData.Factory -> computeIfAbsent(load, new, name), save/load without HolderLookup.Provider,
   AEKey NBT without provider, DataResult.getOrThrow with the 1.20.1 signature). 294 files compile clean.
+- 0017: first boot result: AE2 15.4.10 refuses to load without GuideME >= 20.1.7. Added as an opt-in dev-run dependency (smoke-server.sh
+  resolves the Modrinth version id and passes -Pguideme_modrinth_version).
 - 0016: mixin config (8 common mixins; the client `MouseHandlerAccess` stays out until a refmap/AT exists), `[[mixins]]` in
   mods.toml, MixinExtras jar-in-jar, `forge-1.20.1/smoke-server.sh` (headless dedicated-server boot test).
   No Sponge gradle plugin and no refmap: the mixins only name AE2 members, which are not obfuscated.
@@ -71,7 +73,7 @@ Compiles, never run. Nothing here has been launched in Minecraft.
   SimpleChannel), registering the capability types and `CapProviders` on the buses, the mixin config + MDG mixin setup + jarJar of
   MixinExtras, the client mixin `MouseHandlerAccess` (needs an access transformer or refmap), and every datagen/asset check.
 - NOT ported: all LDLib2 GUI files (20, client/menu + client/policy views) -> rewrite on LDLib 1; Jade tooltips (Jade not a dependency
-  yet); AE2 guide integration (AE2 15 has no guide); Data Energistics compat (no 1.20.1 build); tests.
+  yet); our AE2 guide pages (AE2 15.4 does have a guide, through the GuideME mod, so these can be ported later; the 1.21 ones use AE2 19's built-in guide API); Data Energistics compat (no 1.20.1 build); tests.
 - Stubs that stand in for the GUI: `client/menu/FederationDomainPolicyMenu` (opens nothing), `FederationScreenSwitch` (provider screen only).
 - Runtime risks to check first: capability registration timing, `GlobalCraftingProviders` reflection against AE2 15.4.10, the 6 mixin
   targets (verified to exist statically only), render types registering without RegisterRenderBuffersEvent.

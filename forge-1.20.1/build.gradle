@@ -47,6 +47,11 @@ dependencies {
     modImplementation "appeng:appliedenergistics2-forge:${ae2_version}"
     // LDLib 1 official 1.20.1 Forge build, Modrinth version id YSOP0G6O (= 1.0.52.a). A plain maven dependency so it gets remapped.
     modImplementation "maven.modrinth:ldlib:${ldlib_modrinth_version}"
+    // AE2 15.4 needs GuideME (>= 20.1.7) to load at all. Only the dev run needs it, so it is opt-in:
+    // smoke-server.sh looks the version up and passes -Pguideme_modrinth_version=<Modrinth version id>.
+    if (project.hasProperty('guideme_modrinth_version') && guideme_modrinth_version) {
+        modRuntimeOnly "maven.modrinth:guideme:${guideme_modrinth_version}"
+    }
 }
 
 tasks.named('processResources') {

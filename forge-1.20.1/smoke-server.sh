@@ -5,7 +5,14 @@
 set -u
 cd "$(dirname "$0")/.."
 LOG=/tmp/ae2f-smoke.log
-GRADLE=(./gradlew :forge-1.20.1:runServer --no-daemon --dependency-verification=off)
+
+# AE2 15.4 requires GuideME at runtime; find its newest 20.1.x build for Forge 1.20.1 on Modrinth.
+GUIDEME_ID=$(curl -fsSG 'https://api.modrinth.com/v2/project/guideme/version' \
+    --data-urlencode 'game_versions=["1.20.1"]' --data-urlencode 'loaders=["forge"]' \
+    | jq -r '[.[] | select(.version_number | startswith("20.1"))][0] | "\(.id) \(.version_number)"')
+echo "GuideME: ${GUIDEME_ID:-NOT FOUND} (Modrinth version id, version number)"
+GUIDEME_VERSION_ID=${GUIDEME_ID%% *}
+GRADLE=(./gradlew :forge-1.20.1:runServer --no-daemon --dependency-verification=off -Pguideme_modrinth_version="$GUIDEME_VERSION_ID")
 
 accept_eula() { find forge-1.20.1 -name eula.txt -exec sed -i 's/eula=false/eula=true/' {} +; }
 # The console reads "stop" once it is up; if the line arrives early it simply waits in the pipe.
