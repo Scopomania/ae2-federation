@@ -40,6 +40,8 @@ Compiled against the real Forge 1.20.1 + AE2 15.4.10 + LDLib 1 classes (javac -s
 - 0008: removed Java 21-only calls (List.getFirst/getLast, Math.TAU); scripts/check17 scans bytecode for more.
 - 0009: +8 SavedData classes (SavedData.Factory -> computeIfAbsent(load, new, name), save/load without HolderLookup.Provider,
   AEKey NBT without provider, DataResult.getOrThrow with the 1.20.1 signature). 294 files compile clean.
+- 0018: first bug the server boot found in our own code: FederationPortCapability / EndpointTargetCapability were registered by
+  several registration classes; Forge throws on a second registration, so register() is now idempotent.
 - 0017: first boot result: AE2 15.4.10 refuses to load without GuideME >= 20.1.7. Added as an opt-in dev-run dependency (smoke-server.sh
   resolves the Modrinth version id and passes -Pguideme_modrinth_version).
 - 0016: mixin config (8 common mixins; the client `MouseHandlerAccess` stays out until a refmap/AT exists), `[[mixins]]` in
