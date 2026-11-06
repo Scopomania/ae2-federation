@@ -40,6 +40,9 @@ Compiled against the real Forge 1.20.1 + AE2 15.4.10 + LDLib 1 classes (javac -s
 - 0008: removed Java 21-only calls (List.getFirst/getLast, Math.TAU); scripts/check17 scans bytecode for more.
 - 0009: +8 SavedData classes (SavedData.Factory -> computeIfAbsent(load, new, name), save/load without HolderLookup.Provider,
   AEKey NBT without provider, DataResult.getOrThrow with the 1.20.1 signature). 294 files compile clean.
+- 0016: mixin config (8 common mixins; the client `MouseHandlerAccess` stays out until a refmap/AT exists), `[[mixins]]` in
+  mods.toml, MixinExtras jar-in-jar, `forge-1.20.1/smoke-server.sh` (headless dedicated-server boot test).
+  No Sponge gradle plugin and no refmap: the mixins only name AE2 members, which are not obfuscated.
 - 0015: Forge entrypoints (ForgeEntrypoint @Mod, ForgeClientEntrypoint via DistExecutor), SimpleChannel networking
   (FederationNetwork + the 7 payload records converted from StreamCodec to encode/decode; registration order fixes the ids).
   Compiles; the `Dist` class is stubbed in my scratch compile only (it is in a Forge jar I do not have), so the Codespace

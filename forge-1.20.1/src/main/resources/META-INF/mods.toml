@@ -8,6 +8,9 @@ version = "${mod_version}"
 displayName = "${mod_name}"
 description = '''Link separate Applied Energistics 2 networks so they can share items, crafting, machines and power.'''
 
+[[mixins]]
+config = "${mod_id}.mixins.json"
+
 [[dependencies.${mod_id}]]
 modId = "forge"
 mandatory = true
@@ -31,7 +34,7 @@ side = "BOTH"
 
 [[dependencies.${mod_id}]]
 modId = "ldlib"
-mandatory = true
+mandatory = false
 versionRange = "${ldlib_version_range}"
 ordering = "AFTER"
 side = "CLIENT"
