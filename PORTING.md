@@ -40,6 +40,10 @@ Compiled against the real Forge 1.20.1 + AE2 15.4.10 + LDLib 1 classes (javac -s
 - 0008: removed Java 21-only calls (List.getFirst/getLast, Math.TAU); scripts/check17 scans bytecode for more.
 - 0009: +8 SavedData classes (SavedData.Factory -> computeIfAbsent(load, new, name), save/load without HolderLookup.Provider,
   AEKey NBT without provider, DataResult.getOrThrow with the 1.20.1 signature). 294 files compile clean.
+- 0015: Forge entrypoints (ForgeEntrypoint @Mod, ForgeClientEntrypoint via DistExecutor), SimpleChannel networking
+  (FederationNetwork + the 7 payload records converted from StreamCodec to encode/decode; registration order fixes the ids).
+  Compiles; the `Dist` class is stubbed in my scratch compile only (it is in a Forge jar I do not have), so the Codespace
+  build is the real check for that one import.
 - 0014: the rest of the non-GUI tree: pattern-provider layer on AE2 15, GlobalCraftingProviders, client rendering
   (RenderStates shim, 1.20.1 vertex API, QuadBaker adapter), block entities, registries, 6 mixins (not registered yet).
   454 files compile together on a Java 17 language level against the real Forge/AE2 15/LDLib 1 classes; bytecode scan finds

@@ -33,9 +33,12 @@ public final class FederationScreenSwitch {
         CURSOR.arrived(Util.getMillis()).ifPresent(position -> {
             var minecraft = Minecraft.getInstance();
             GLFW.glfwSetCursorPos(minecraft.getWindow().getWindow(), position[0], position[1]);
-            var mouse = (MouseHandlerAccess) minecraft.mouseHandler;
-            mouse.ae2federation$setXpos(position[0]);
-            mouse.ae2federation$setYpos(position[1]);
+            // Only when the MouseHandlerAccess mixin is applied; it needs the refmap setup (see PORTING.md).
+            Object handler = minecraft.mouseHandler;
+            if (handler instanceof MouseHandlerAccess mouse) {
+                mouse.ae2federation$setXpos(position[0]);
+                mouse.ae2federation$setYpos(position[1]);
+            }
         });
     }
 

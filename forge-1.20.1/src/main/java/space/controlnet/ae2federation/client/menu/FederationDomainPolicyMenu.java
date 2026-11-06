@@ -27,6 +27,18 @@ public final class FederationDomainPolicyMenu {
         return false;
     }
 
+    public static void returnToProvider(ServerPlayer player, int containerId) {
+    }
+
+    public static FederationDomainPolicyActionResult dispatch(ServerPlayer player,
+            FederationDomainPolicyActionRequest request) {
+        return FederationDomainPolicyActionResult.INVALID_TARGET;
+    }
+
+    public static void acceptReply(net.minecraft.world.entity.player.Player player, int containerId, java.util.UUID nonce,
+            java.util.UUID requestId, long sequence, FederationDomainPolicyActionResult result) {
+    }
+
     public static boolean openBridge(ServerPlayer player, BridgeRightClickContext context) {
         return false;
     }
