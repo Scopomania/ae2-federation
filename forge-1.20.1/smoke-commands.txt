@@ -1,0 +1,24 @@
+# Console commands the smoke test feeds a running dedicated server, one per line (blank lines and # are skipped).
+# They place every Federation block in a loaded chunk, read each block entity back, let it tick, spill loot, then break it all.
+forceload add 0 0
+setblock 0 100 0 ae2federation:cable
+setblock 1 100 0 ae2federation:router
+setblock 3 100 0 ae2federation:switch
+setblock 5 100 0 ae2federation:pattern_provider
+setblock 7 100 0 ae2federation:processing_endpoint
+setblock 9 100 0 ae2federation:beam_converter
+setblock 11 100 0 ae2federation:beam_former
+setblock 13 100 0 ae2federation:quantum_cube
+data get block 0 100 0
+data get block 1 100 0
+data get block 3 100 0
+data get block 5 100 0
+data get block 7 100 0
+data get block 9 100 0
+data get block 11 100 0
+data get block 13 100 0
+loot spawn 0 105 0 loot ae2federation:blocks/router
+loot spawn 0 105 0 loot ae2federation:blocks/cable
+fill 0 100 0 13 100 0 air destroy
+data get block 1 100 0
+forceload remove all

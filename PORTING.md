@@ -40,6 +40,8 @@ Compiled against the real Forge 1.20.1 + AE2 15.4.10 + LDLib 1 classes (javac -s
 - 0008: removed Java 21-only calls (List.getFirst/getLast, Math.TAU); scripts/check17 scans bytecode for more.
 - 0009: +8 SavedData classes (SavedData.Factory -> computeIfAbsent(load, new, name), save/load without HolderLookup.Provider,
   AEKey NBT without provider, DataResult.getOrThrow with the 1.20.1 signature). 294 files compile clean.
+- 0020: smoke test v2: after the boot it feeds smoke-commands.txt into the server console (place every block, read the block entities back,
+  spill loot, destroy them) and prints the command results and any errors.
 - 0019: assets and data. Models, blockstates, textures, device meshes, fonts, lang copied as they are; data converted to 1.20.1:
   recipe->recipes, advancement->advancements, loot_table->loot_tables, tags/block->blocks, tags/item->items, recipe result id->item,
   advancement item predicates string->array, c: tags -> forge:, pack_format 34 -> 15. Left out: ae2guide pages, the 74 guide resource-pack
