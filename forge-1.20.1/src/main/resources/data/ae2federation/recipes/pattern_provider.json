@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "ae2:pattern_provider"
+    },
+    {
+      "item": "ae2federation:nexus_core"
+    }
+  ],
+  "result": {
+    "item": "ae2federation:pattern_provider",
+    "count": 1
+  }
+}

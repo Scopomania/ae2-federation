@@ -1,0 +1,16 @@
+{
+  "type": "ae2:inscriber",
+  "ingredients": {
+    "middle": {
+      "tag": "forge:ender_pearls"
+    },
+    "top": {
+      "item": "ae2federation:nexus_processor_press"
+    }
+  },
+  "mode": "inscribe",
+  "result": {
+    "item": "ae2federation:printed_nexus_circuit",
+    "count": 1
+  }
+}

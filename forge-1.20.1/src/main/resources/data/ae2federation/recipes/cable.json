@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "G": {
+      "tag": "ae2:glass_cable"
+    },
+    "P": {
+      "item": "ae2federation:nexus_core"
+    }
+  },
+  "pattern": [
+    "GGG",
+    "GPG",
+    "GGG"
+  ],
+  "result": {
+    "item": "ae2federation:cable",
+    "count": 8
+  }
+}

@@ -1,0 +1,52 @@
+{
+	"format_version": "26.3",
+	"credit": "Made with Blockbench",
+	"parent": "minecraft:block/block",
+	"render_type": "minecraft:solid",
+	"textures": {
+		"0": "ae2federation:part/bridge_sides",
+		"1": "ae2federation:part/bridge",
+		"particle": "ae2federation:part/bridge_sides"
+	},
+	"elements": [
+		{
+			"from": [4, 4, 6.5],
+			"to": [12, 12, 9.5],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, 8, 8]},
+			"faces": {
+				"north": {"uv": [4, 4, 12, 12], "texture": "#1"},
+				"east": {"uv": [12, 4, 15, 12], "texture": "#0"},
+				"south": {"uv": [4, 4, 12, 12], "texture": "#1"},
+				"west": {"uv": [1, 4, 4, 12], "texture": "#0"},
+				"up": {"uv": [4, 12, 12, 15], "rotation": 180, "texture": "#0"},
+				"down": {"uv": [4, 1, 12, 4], "rotation": 180, "texture": "#0"}
+			}
+		},
+		{
+			"from": [5, 5, 5.5],
+			"to": [11, 11, 6.5],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, 8, 8]},
+			"faces": {
+				"north": {"uv": [5, 5, 11, 11], "texture": "#1"},
+				"east": {"uv": [10, 5, 11, 11], "texture": "#1"},
+				"south": {"uv": [0, 0, 6, 6], "texture": "#missing"},
+				"west": {"uv": [5, 5, 6, 11], "texture": "#1"},
+				"up": {"uv": [5, 5, 11, 6], "texture": "#1"},
+				"down": {"uv": [5, 10, 11, 11], "texture": "#1"}
+			}
+		},
+		{
+			"from": [5, 5, 9.5],
+			"to": [11, 11, 10.5],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, 8, 8]},
+			"faces": {
+				"north": {"uv": [0, 0, 6, 6], "texture": "#missing"},
+				"east": {"uv": [10, 5, 11, 11], "texture": "#1"},
+				"south": {"uv": [5, 5, 11, 11], "texture": "#1"},
+				"west": {"uv": [5, 5, 6, 11], "texture": "#1"},
+				"up": {"uv": [5, 5, 11, 6], "texture": "#1"},
+				"down": {"uv": [5, 10, 11, 11], "texture": "#1"}
+			}
+		}
+	]
+}

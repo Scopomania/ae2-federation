@@ -1,0 +1,19 @@
+{
+  "type": "ae2:inscriber",
+  "ingredients": {
+    "bottom": {
+      "item": "ae2:logic_processor_press"
+    },
+    "middle": {
+      "tag": "forge:ender_pearls"
+    },
+    "top": {
+      "item": "ae2:engineering_processor_press"
+    }
+  },
+  "mode": "press",
+  "result": {
+    "item": "ae2federation:nexus_processor_press",
+    "count": 1
+  }
+}

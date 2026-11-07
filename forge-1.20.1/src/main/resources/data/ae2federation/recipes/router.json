@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "C": {
+      "item": "ae2federation:cable"
+    },
+    "F": {
+      "tag": "forge:gems/fluix"
+    },
+    "L": {
+      "item": "ae2federation:nexus_core"
+    }
+  },
+  "pattern": [
+    "CFC",
+    "FLF",
+    "CFC"
+  ],
+  "result": {
+    "item": "ae2federation:router",
+    "count": 1
+  }
+}
