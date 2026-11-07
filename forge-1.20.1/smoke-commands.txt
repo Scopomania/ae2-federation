@@ -1,5 +1,7 @@
-# Console commands the smoke test feeds a running dedicated server, one per line (blank lines and # are skipped).
-# They place every Federation block in a loaded chunk, read each block entity back, let it tick, spill loot, then break it all.
+# Console commands the smoke test plays into a running dedicated server over RCON, one per line (blank lines and # are skipped).
+# Part 1: place every Federation block in a loaded chunk, read each block entity back, spill loot.
+# Part 2: build a small real AE2 network next to a Federation cable, so AE2's grid, storage and crafting services (the classes the
+#         mixins target) actually load and tick with our hooks attached, then break it all.
 forceload add 0 0
 setblock 0 100 0 ae2federation:cable
 setblock 1 100 0 ae2federation:router
@@ -21,4 +23,25 @@ loot spawn 0 105 0 loot ae2federation:blocks/router
 loot spawn 0 105 0 loot ae2federation:blocks/cable
 fill 0 100 0 13 100 0 air destroy
 data get block 1 100 0
+# Part 2: an AE2 network (controller, cable, drive, AE2's own pattern provider and a cable bus) beside a Federation cable
+setblock 20 100 0 ae2:controller
+setblock 21 100 0 ae2federation:cable
+setblock 22 100 0 ae2:cable_bus
+setblock 23 100 0 ae2:drive
+setblock 24 100 0 ae2:pattern_provider
+setblock 25 100 0 ae2:interface
+setblock 26 100 0 ae2:energy_acceptor
+data get block 20 100 0
+data get block 21 100 0
+data get block 23 100 0
+data get block 24 100 0
+# let the grids settle and tick a few times
+say tick
+say tick
+say tick
+say tick
+data get block 21 100 0
+data get block 24 100 0
+fill 20 100 0 26 100 0 air destroy
+say networks removed
 forceload remove all
