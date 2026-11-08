@@ -179,8 +179,9 @@ public final class BeamFormerBlockEntity extends RouterBlockEntity {
         if (tag.contains(LOOK_PARTNER)) readLook(tag);
     }
 
-    private void readLook(CompoundTag tag) {
-        look = !tag.contains(LOOK_PARTNER) ? null : new BeamLook(BlockPos.of(tag.getLong(LOOK_PARTNER)),
+    /** A null tag is a packet with nothing in it (1.20.1 sends one when the look is cleared): no partner, no beam. */
+    private void readLook(@org.jetbrains.annotations.Nullable CompoundTag tag) {
+        look = tag == null || !tag.contains(LOOK_PARTNER) ? null : new BeamLook(BlockPos.of(tag.getLong(LOOK_PARTNER)),
                 tag.getInt(LOOK_SIDE), tag.getInt(LOOK_UNITS), tag.getInt(LOOK_CAPACITY), tag.getBoolean(LOOK_ENFORCED),
                 tag.getBoolean(LOOK_UNPOWERED));
     }

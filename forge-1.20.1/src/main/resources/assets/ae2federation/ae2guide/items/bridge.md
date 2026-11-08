@@ -1,0 +1,61 @@
+---
+navigation:
+  parent: items/index.md
+  title: ME Federation Bridge
+  icon: ae2federation:bridge
+  position: 435
+categories:
+- network infrastructure
+item_ids:
+- ae2federation:bridge
+---
+
+# ME Federation Bridge
+
+<GameScene zoom="8" background="transparent">
+  <ImportStructure src="../assets/bridge_part.snbt" />
+</GameScene>
+
+The Bridge joins two networks that sit side by side, with no Switch needed. Place it on a cable of one network, so
+that its outer side touches a cable or device of the other network. The two sides stay separate networks; the Bridge
+uses no channel, no idle power and no FE, so a Bridge's domain needs no Beam Converter.
+
+<GameScene zoom="4" interactive={true} background="transparent">
+  <ImportStructure src="../assets/bridge.snbt" />
+  <BoxAnnotation color="#915dcd" min="3.375 0 0" max="6 2 1">
+    Network A: its energy cell powers both networks
+  </BoxAnnotation>
+  <BoxAnnotation color="#5CA7CD" min="0 0 0" max="3 1 1">
+    Network B: a drive and no power of its own
+  </BoxAnnotation>
+  <BoxAnnotation color="#dddddd" min="3 0.25 0.25" max="3.375 0.75 0.75">
+    Bridge: on network A's cable, its outer side touching network B's cable
+  </BoxAnnotation>
+  <IsometricCamera yaw="195" pitch="30" />
+</GameScene>
+
+The Federation screen shows the two networks side by side, and links them once you switch a rule on. Here network A
+uses network B's storage, and both run on network A's energy cell through ME power:
+
+**Networks**
+
+- **Network A**: Drive; Energy cell
+- **Network B**: Drive
+
+**Rules**
+
+- Network A uses Network B's storage
+
+**Shared power**
+
+- Network A ↔ Network B
+
+
+A Bridge forms a small [Federation domain](../mechanics/index.md) with just those two networks. It joins no Federation
+Cable; Pattern Providers and Endpoints reach other networks through Switches and cable.
+
+Right-click it to open the Federation screen for the two networks. If it is not connected correctly, right-clicking
+shows what is wrong instead; see [Troubleshooting](../troubleshooting.md). Like other AE2 cable parts, sneak and
+use a wrench on it to pick it up.
+
+<RecipeFor id="ae2federation:bridge" />
