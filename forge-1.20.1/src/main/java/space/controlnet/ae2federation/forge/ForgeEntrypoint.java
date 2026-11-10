@@ -63,6 +63,8 @@ public final class ForgeEntrypoint {
         BundleFormPayload.register();
         var bus = MinecraftForge.EVENT_BUS;
         bus.addListener(space.controlnet.ae2federation.crafting.projection.ReturnRecoveryCommands::register);
+        bus.addListener(space.controlnet.ae2federation.command.FederationConsole::register);
+        bus.addListener(space.controlnet.ae2federation.command.FederationConsole::onLoggedOut);
         bus.addListener(ForgeEntrypoint::onLevelUnload);
         bus.addListener(ForgeEntrypoint::onServerStopped);
         bus.addListener(ForgeEntrypoint::onPlayerLoggedOut);

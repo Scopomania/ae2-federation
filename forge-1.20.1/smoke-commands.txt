@@ -44,4 +44,6 @@ data get block 21 100 0
 data get block 24 100 0
 fill 20 100 0 26 100 0 air destroy
 say networks removed
+# the policy console, from the server console: lists the Federation Domains (none in this scene)
+ae2federation domains
 forceload remove all
