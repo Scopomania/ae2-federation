@@ -52,6 +52,8 @@ public final class FederationConsole {
                 .then(Commands.literal("domains").executes(context -> domains(context.getSource())))
                 .then(Commands.literal("open").then(Commands.argument("pos", BlockPosArgument.blockPos())
                         .executes(context -> open(context.getSource(), BlockPosArgument.getLoadedBlockPos(context, "pos")))))
+                .then(Commands.literal("ports").then(Commands.argument("pos", BlockPosArgument.blockPos())
+                        .executes(context -> ports(context.getSource(), BlockPosArgument.getLoadedBlockPos(context, "pos")))))
                 .then(Commands.literal("show").executes(context -> act(context, null, false)))
                 .then(Commands.literal("close").executes(FederationConsole::close))
                 .then(Commands.literal("toggle").executes(context -> act(context, FederationDomainPolicySession::toggleEnabled, true)))
@@ -84,6 +86,44 @@ public final class FederationConsole {
                     + " network(s), " + domain.nodes().size() + " node(s)"), false);
         }
         return domains.size();
+    }
+
+    /**
+     * What each face of a Router or Switch is bound to, and what its boundary node (the one an AE2 cable connects to) is
+     * joined with. For chasing a face that connects and drops again: run it before and after, and compare.
+     */
+    private static int ports(CommandSourceStack source, BlockPos position) {
+        if (!(source.getLevel().getBlockEntity(position) instanceof RouterBlockEntity router)) {
+            source.sendFailure(Component.literal("No Federation Router or Switch at " + position.toShortString()));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("Faces of the block at " + position.toShortString() + ":"), false);
+        for (var face : net.minecraft.core.Direction.values()) {
+            var binding = router.bindings().get(face);
+            var node = router.boundaryNode(face);
+            var line = new StringBuilder(" ").append(face.getSerializedName()).append(": ")
+                    .append(binding == null ? "none" : binding.getClass().getSimpleName());
+            if (node == null) {
+                line.append(", no node");
+            } else {
+                line.append(", node online=").append(node.isOnline()).append(" active=").append(node.isActive())
+                        .append(", grid of ").append(node.getGrid().size()).append(" node(s), connections=")
+                        .append(node.getConnections().size());
+                for (var connection : node.getConnections()) {
+                    var other = connection.getOtherSide(node);
+                    var owner = other.getOwner();
+                    line.append(" [-> ").append(owner.getClass().getSimpleName());
+                    if (owner instanceof net.minecraft.world.level.block.entity.BlockEntity entity) {
+                        line.append(" at ").append(entity.getBlockPos().toShortString());
+                    } else if (owner instanceof appeng.parts.AEBasePart part && part.getBlockEntity() != null) {
+                        line.append(" at ").append(part.getBlockEntity().getBlockPos().toShortString());
+                    }
+                    line.append(']');
+                }
+            }
+            source.sendSuccess(() -> Component.literal(line.toString()), false);
+        }
+        return 1;
     }
 
     private static int open(CommandSourceStack source, BlockPos position) throws CommandSyntaxException {

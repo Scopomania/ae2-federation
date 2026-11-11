@@ -42,9 +42,8 @@ public final class RefinedDeviceBakedModel extends BakedModelWrapper<BakedModel>
         wrap(event,QuantumRegistration.QUANTUM_CUBE.get(),false,false);
     }
     private static void wrap(ModelEvent.ModifyBakingResult event,Block block,boolean laser,boolean pixelPair) {
-        var surface=new Material(TextureAtlas.LOCATION_BLOCKS,RefinedDeviceAssets.SURFACE).sprite();
-        var emission=new Material(TextureAtlas.LOCATION_BLOCKS,RefinedDeviceAssets.EMISSION).sprite();
-        var shapes=new Shapes(laser,pixelPair,surface,emission);
+        // The block atlas is not stitched while the models are still being baked, so its sprites are read on first use.
+        var shapes=new Shapes(laser,pixelPair);
         for (var state:block.getStateDefinition().getPossibleStates()) {
             if (!RouterBlock.formed(state)) continue;
             var key=BlockModelShaper.stateToModelLocation(state);
@@ -80,7 +79,7 @@ public final class RefinedDeviceBakedModel extends BakedModelWrapper<BakedModel>
         }
         if (side!=null) return List.of();
         var key=data.get(MEMBER);
-        if (key!=null) return shapes.members.computeIfAbsent(key,shapes::member);
+        if (key!=null) return shapes.quads(key);
         return List.of();
     }
     @Override
@@ -91,10 +90,25 @@ public final class RefinedDeviceBakedModel extends BakedModelWrapper<BakedModel>
 
     private static final class Shapes {
         private final boolean laser,pixelPair;
-        private final TextureAtlasSprite surface,emission;
+        private volatile TextureAtlasSprite surface,emission;
         private final Map<Key,List<BakedQuad>> members=new ConcurrentHashMap<>();
-        Shapes(boolean laser,boolean pixelPair,TextureAtlasSprite surface,TextureAtlasSprite emission) {
-            this.laser=laser; this.pixelPair=pixelPair; this.surface=surface; this.emission=emission;
+        Shapes(boolean laser,boolean pixelPair) {
+            this.laser=laser; this.pixelPair=pixelPair;
+        }
+        private static TextureAtlasSprite sprite(net.minecraft.resources.ResourceLocation id) {
+            return new Material(TextureAtlas.LOCATION_BLOCKS,id).sprite();
+        }
+        /** One member's quads, built the first time it is drawn; nothing is remembered while the atlas has no sprites. */
+        List<BakedQuad> quads(Key key) {
+            var cached=members.get(key);
+            if (cached!=null) return cached;
+            if (surface==null) surface=sprite(RefinedDeviceAssets.SURFACE);
+            if (emission==null) emission=sprite(RefinedDeviceAssets.EMISSION);
+            if (surface==null || emission==null) {
+                surface=null; emission=null;
+                return List.of();
+            }
+            return members.computeIfAbsent(key,this::member);
         }
         List<BakedQuad> member(Key key) {
             return bake(RefinedDeviceMesh.cell(RefinedDeviceAssets.mesh((laser ? "laser-" : "quantum-")+key.section),

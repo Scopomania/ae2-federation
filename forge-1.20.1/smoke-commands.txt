@@ -22,6 +22,8 @@ data get block 13 100 0
 loot spawn 0 105 0 loot ae2federation:blocks/router
 loot spawn 0 105 0 loot ae2federation:blocks/cable
 fill 0 100 0 13 100 0 air destroy
+ae2federation ports 1 100 0
+ae2federation ports 3 100 0
 data get block 1 100 0
 # Part 2: an AE2 network (controller, cable, drive, AE2's own pattern provider and a cable bus) beside a Federation cable
 setblock 20 100 0 ae2:controller
