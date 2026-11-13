@@ -48,4 +48,22 @@ fill 20 100 0 26 100 0 air destroy
 say networks removed
 # the policy console, from the server console: lists the Federation Domains (none in this scene)
 ae2federation domains
+# Part 3, regression: a Switch placed against AE2 blocks must grow a boundary node on those faces. AE2 15 only knows its own blocks
+# as node hosts through instanceof, so reading the capability alone saw none: the face made a node when asked to verify, then dropped it
+# again on the next check (a connect-then-disconnect cycle that kept recalculating the neighbouring ME network).
+setblock 30 100 0 ae2:controller
+setblock 31 100 0 ae2federation:switch
+setblock 32 100 0 ae2:drive
+say tick
+say tick
+say tick
+ae2federation ports 31 100 0
+#expect west: Disconnected, node
+#expect east: Disconnected, node
+say tick
+say tick
+ae2federation ports 31 100 0
+#expect west: Disconnected, node
+#expect east: Disconnected, node
+fill 30 100 0 32 100 0 air destroy
 forceload remove all

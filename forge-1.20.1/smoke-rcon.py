@@ -41,8 +41,17 @@ def main(host, port, password, path):
     if request_id == -1:
         print("RCON: wrong password"); return 2
     failures = 0
+    reply = ""
     for line in open(path):
         line = line.strip()
+        if line.startswith("#expect "):
+            # "#expect <text>": the previous command's reply must contain <text>
+            wanted = line[len("#expect "):]
+            ok = wanted in reply
+            print(f"    expect {wanted!r}: {'ok' if ok else 'FAILED'}")
+            if not ok:
+                failures += 1
+            continue
         if not line or line.startswith("#"):
             continue
         reply = command(sock, line)

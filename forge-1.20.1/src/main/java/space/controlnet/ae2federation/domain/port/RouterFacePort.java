@@ -5,7 +5,6 @@ import appeng.api.networking.GridFlags;
 import appeng.api.networking.GridHelper;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridNodeListener;
-import appeng.api.networking.IInWorldGridNodeHost;
 import appeng.api.networking.IManagedGridNode;
 import java.util.EnumSet;
 import java.util.function.BooleanSupplier;
@@ -68,8 +67,6 @@ public final class RouterFacePort implements IdentityNeutralNodeOwner {
     private final Runnable wake;
     private RouterPortBinding binding = RouterPortBinding.Disconnected.INSTANCE;
     private Caps.Cache<FederationPort> federationCache;
-    /** Tells the face when the neighbour's AE2 node host comes or goes, including when its chunk loads or unloads. */
-    private @Nullable Caps.Cache<IInWorldGridNodeHost> nodeHostCache;
     private ServerLevel level;
     private boolean dirty = true;
     /** Look at the neighbour without the caches on the next resolve, in case an event that changed it was missed. */
@@ -96,8 +93,6 @@ public final class RouterFacePort implements IdentityNeutralNodeOwner {
         resolveLater();
         federationCache = federationCache();
         if (attachesNetworks) {
-            nodeHostCache = Caps.Cache.create(appeng.capabilities.Capabilities.IN_WORLD_GRID_NODE_HOST, serverLevel,
-                    neighborPosition, null, () -> alive, this::recheck);
             syncNode();
         }
     }
@@ -234,17 +229,19 @@ public final class RouterFacePort implements IdentityNeutralNodeOwner {
      * are read every time, even with the neighbour unloaded, as a cache tells of a change only after a read.
      */
     private void syncNode() {
-        if (!attachesNetworks || !alive || nodeHostCache == null) {
+        if (!attachesNetworks || !alive || federationCache == null) {
             return;
         }
-        var host = nodeHostCache.getCapability();
         var federationPort = federationCache.getCapability();
         var neighborPosition = routerPosition.relative(face);
         var loaded = level.isLoaded(neighborPosition);
+        // AE2 15 finds a neighbour's node host with GridHelper.getNodeHost: an instanceof check first, then the capability.
+        // AE2's own blocks are hosts only through instanceof, so reading the capability alone saw none of them: the face
+        // made a node when asked to verify, and dropped it on the next ordinary check.
+        var host = loaded ? GridHelper.getNodeHost(level, neighborPosition) : null;
         if (verify) {
             verify = false;
             if (loaded) {
-                host = GridHelper.getNodeHost(level, neighborPosition);
                 federationPort = Caps.find(level, neighborPosition, FederationPortCapability.BLOCK, face.getOpposite());
             }
         }
