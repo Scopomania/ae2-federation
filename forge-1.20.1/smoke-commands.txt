@@ -52,22 +52,24 @@ ae2federation domains
 # its own blocks as node hosts through instanceof, so reading the capability alone saw none: the face made a node when asked to verify,
 # then dropped it again on the next check (a connect-then-disconnect cycle that kept recalculating the neighbouring ME network).
 # A face joined to an AE2 grid reports "Native"; before the fix the faces read "no node".
-setblock 30 100 0 ae2:controller
-setblock 31 100 0 ae2federation:switch
-setblock 32 100 0 ae2:drive
+# The scene stays inside chunk 0,0 (x and z 0..15): the only chunk the script force-loads, so AE2 initialises every node here.
+setblock 1 100 5 ae2:controller
+setblock 2 100 5 ae2federation:switch
+setblock 3 100 5 ae2:drive
 say tick
 say tick
 say tick
-ae2federation ports 31 100 0
+ae2federation ports 2 100 5
 #expect west: Native, node
 #expect ControllerBlockEntity
-#expect east: Disconnected, node
-# informational (not asserted yet): does the face beside the drive join the drive's grid? Compare with the drive's own node data.
-data get block 32 100 0
+#expect east: Native, node
+#expect DriveBlockEntity
+data get block 3 100 5
 say tick
 say tick
-ae2federation ports 31 100 0
+ae2federation ports 2 100 5
 #expect west: Native, node
 #expect ControllerBlockEntity
-fill 30 100 0 32 100 0 air destroy
+#expect DriveBlockEntity
+fill 1 100 5 3 100 5 air destroy
 forceload remove all
