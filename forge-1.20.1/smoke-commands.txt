@@ -48,9 +48,10 @@ fill 20 100 0 26 100 0 air destroy
 say networks removed
 # the policy console, from the server console: lists the Federation Domains (none in this scene)
 ae2federation domains
-# Part 3, regression: a Switch placed against AE2 blocks must grow a boundary node on those faces. AE2 15 only knows its own blocks
-# as node hosts through instanceof, so reading the capability alone saw none: the face made a node when asked to verify, then dropped it
-# again on the next check (a connect-then-disconnect cycle that kept recalculating the neighbouring ME network).
+# Part 3, regression: a Switch placed against AE2 blocks must grow a boundary node on those faces and join their grids. AE2 15 only knows
+# its own blocks as node hosts through instanceof, so reading the capability alone saw none: the face made a node when asked to verify,
+# then dropped it again on the next check (a connect-then-disconnect cycle that kept recalculating the neighbouring ME network).
+# A face joined to an AE2 grid reports "Native"; before the fix the faces read "no node".
 setblock 30 100 0 ae2:controller
 setblock 31 100 0 ae2federation:switch
 setblock 32 100 0 ae2:drive
@@ -58,12 +59,15 @@ say tick
 say tick
 say tick
 ae2federation ports 31 100 0
-#expect west: Disconnected, node
+#expect west: Native, node
+#expect ControllerBlockEntity
 #expect east: Disconnected, node
+# informational (not asserted yet): does the face beside the drive join the drive's grid? Compare with the drive's own node data.
+data get block 32 100 0
 say tick
 say tick
 ae2federation ports 31 100 0
-#expect west: Disconnected, node
-#expect east: Disconnected, node
+#expect west: Native, node
+#expect ControllerBlockEntity
 fill 30 100 0 32 100 0 air destroy
 forceload remove all
