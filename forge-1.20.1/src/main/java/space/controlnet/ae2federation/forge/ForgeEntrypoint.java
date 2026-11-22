@@ -61,6 +61,9 @@ public final class ForgeEntrypoint {
         ObservationPayloads.register();
         FederationDomainPolicyActionPayloads.register();
         BundleFormPayload.register();
+        space.controlnet.ae2federation.forge.network.PolicyViewPayload.register();
+        space.controlnet.ae2federation.forge.network.PolicyCommandPayload.register();
+        space.controlnet.ae2federation.forge.gui.FederationMenus.register(modBus);
         var bus = MinecraftForge.EVENT_BUS;
         bus.addListener(space.controlnet.ae2federation.crafting.projection.ReturnRecoveryCommands::register);
         bus.addListener(space.controlnet.ae2federation.command.FederationConsole::register);

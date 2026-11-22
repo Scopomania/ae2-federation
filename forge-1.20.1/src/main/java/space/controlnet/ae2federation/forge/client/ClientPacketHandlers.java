@@ -7,6 +7,14 @@ import space.controlnet.ae2federation.client.menu.FederationDomainPolicyMenu;
 
 /** Client-side packet handlers, in their own class so the server never resolves {@link Minecraft} through a packet. */
 public final class ClientPacketHandlers {
+    public static void policyView(space.controlnet.ae2federation.forge.network.PolicyViewPayload payload) {
+        var player = Minecraft.getInstance().player;
+        if (player != null && player.containerMenu.containerId == payload.containerId()
+                && player.containerMenu instanceof space.controlnet.ae2federation.forge.gui.FederationPolicyMenu menu) {
+            menu.acceptView(payload.json(), payload.status(), payload.power(), payload.overview());
+        }
+    }
+
     private ClientPacketHandlers() {
     }
 

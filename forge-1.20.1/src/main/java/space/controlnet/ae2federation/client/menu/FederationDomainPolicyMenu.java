@@ -1,6 +1,7 @@
 package space.controlnet.ae2federation.client.menu;
 
 import net.minecraft.core.BlockPos;
+import space.controlnet.ae2federation.client.policy.FederationDomainPolicySession;
 import net.minecraft.server.level.ServerPlayer;
 import space.controlnet.ae2federation.bridge.BridgeRightClickContext;
 
@@ -16,15 +17,27 @@ public final class FederationDomainPolicyMenu {
     }
 
     public static boolean openRouter(ServerPlayer player, BlockPos position) {
-        return false;
+        return open(player, FederationDomainPolicySession.forRouter(player, position));
     }
 
     public static boolean openDevice(ServerPlayer player, BlockPos position) {
-        return false;
+        return open(player, FederationDomainPolicySession.forDevice(player, position));
     }
 
     public static boolean openProvider(ServerPlayer player, BlockPos position) {
-        return false;
+        return open(player, FederationDomainPolicySession.forDevice(player, position));
+    }
+
+    /** Opens the Federation screen on a session; the screen shows the session's snapshot and sends clicks back to it. */
+    private static boolean open(ServerPlayer player, FederationDomainPolicySession session) {
+        if (session == null) {
+            return false;
+        }
+        net.minecraftforge.network.NetworkHooks.openScreen(player,
+                new net.minecraft.world.SimpleMenuProvider((containerId, inventory, ignored) ->
+                        new space.controlnet.ae2federation.forge.gui.FederationPolicyMenu(containerId, inventory, session),
+                        net.minecraft.network.chat.Component.literal("Federation")));
+        return true;
     }
 
     public static void returnToProvider(ServerPlayer player, int containerId) {
@@ -40,6 +53,6 @@ public final class FederationDomainPolicyMenu {
     }
 
     public static boolean openBridge(ServerPlayer player, BridgeRightClickContext context) {
-        return false;
+        return open(player, FederationDomainPolicySession.forBridge(player, context));
     }
 }

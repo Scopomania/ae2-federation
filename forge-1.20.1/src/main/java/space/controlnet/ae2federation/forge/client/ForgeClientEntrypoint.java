@@ -43,6 +43,10 @@ public final class ForgeClientEntrypoint {
         modBus.addListener(CableFlowRenderer::register);
         modBus.addListener(BeamFormerRenderer::register);
         ClientStartup.start(LOGGER);
+        modBus.addListener((net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent event) -> event.enqueueWork(() ->
+                net.minecraft.client.gui.screens.MenuScreens.register(
+                        space.controlnet.ae2federation.forge.gui.FederationMenus.POLICY.get(),
+                        space.controlnet.ae2federation.forge.gui.client.FederationPolicyScreen::new)));
         var bus = MinecraftForge.EVENT_BUS;
         bus.addListener(ForgeClientEntrypoint::onLoggingOut);
         bus.addListener(ForgeClientEntrypoint::onScreenInit);
