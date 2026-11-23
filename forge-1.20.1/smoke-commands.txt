@@ -65,6 +65,8 @@ ae2federation ports 2 100 5
 #expect east: Native, node
 #expect DriveBlockEntity
 data get block 3 100 5
+# the identity service on a plain AE2 grid: SETTLED is what bridges and rules need (informational)
+ae2federation identity 1 100 5
 say tick
 say tick
 ae2federation ports 2 100 5

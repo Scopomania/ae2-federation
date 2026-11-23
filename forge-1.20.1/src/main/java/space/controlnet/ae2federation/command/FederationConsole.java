@@ -54,6 +54,8 @@ public final class FederationConsole {
                         .executes(context -> open(context.getSource(), BlockPosArgument.getLoadedBlockPos(context, "pos")))))
                 .then(Commands.literal("ports").then(Commands.argument("pos", BlockPosArgument.blockPos())
                         .executes(context -> ports(context.getSource(), BlockPosArgument.getLoadedBlockPos(context, "pos")))))
+                .then(Commands.literal("identity").then(Commands.argument("pos", BlockPosArgument.blockPos())
+                        .executes(context -> identity(context.getSource(), BlockPosArgument.getLoadedBlockPos(context, "pos")))))
                 .then(Commands.literal("show").executes(context -> act(context, null, false)))
                 .then(Commands.literal("close").executes(FederationConsole::close))
                 .then(Commands.literal("toggle").executes(context -> act(context, FederationDomainPolicySession::toggleEnabled, true)))
@@ -124,6 +126,27 @@ public final class FederationConsole {
             source.sendSuccess(() -> Component.literal(line.toString()), false);
         }
         return 1;
+    }
+
+    /** The identity status of the AE2 grid the block at pos belongs to: SETTLED is what rules and bridges need. */
+    private static int identity(CommandSourceStack source, BlockPos position) {
+        var host = appeng.api.networking.GridHelper.getNodeHost(source.getLevel(), position);
+        if (host == null) {
+            source.sendFailure(Component.literal("No AE2 grid node at " + position.toShortString()));
+            return 0;
+        }
+        var seen = new java.util.HashSet<appeng.api.networking.IGrid>();
+        for (var face : net.minecraft.core.Direction.values()) {
+            var node = host.getGridNode(face);
+            if (node == null || !seen.add(node.getGrid())) {
+                continue;
+            }
+            var grid = node.getGrid();
+            var settlement = grid.getService(space.controlnet.ae2federation.identity.NetworkIdentityService.class).settlement();
+            source.sendSuccess(() -> Component.literal("Grid of " + grid.size() + " node(s): identity " + settlement.status()
+                    + settlement.networkId().map(id -> " " + id.value()).orElse("")), false);
+        }
+        return seen.size();
     }
 
     private static int open(CommandSourceStack source, BlockPos position) throws CommandSyntaxException {

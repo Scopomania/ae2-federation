@@ -90,7 +90,7 @@ public final class FederationPolicyScreen extends AbstractContainerScreen<Federa
         String consumerId = text(selected, "consumer");
         String providerId = text(selected, "provider");
         if (consumerChoices.isEmpty() || consumerId.isEmpty()) {
-            graphics.drawString(font, "This domain has no networks to set rules between yet.", x + 10, y + 60, 0xFFC857, false);
+            drawUnconfirmed(graphics, x + 10, y + 52, mouseX, mouseY, consumerChoices);
         } else {
             drawSelector(graphics, x + 10, y + 52, mouseX, mouseY, "A network that uses:", consumerChoices, consumerId, "consumer");
             drawSelector(graphics, x + 10, y + 74, mouseX, mouseY, "the resources of:", providerChoices, providerId, "provider");
@@ -126,6 +126,42 @@ public final class FederationPolicyScreen extends AbstractContainerScreen<Federa
         graphics.fill(boxX + 18, y, boxX + 150, y + 16, 0xFF15151C);
         graphics.drawString(font, font.plainSubstrByWidth(name(choices.get(index).id()), 126), boxX + 22, y + 4, 0xFFFFFF, false);
         button(graphics, boxX + 152, y, 16, 16, ">", mouseX, mouseY, click -> select(group, choices, current + 1));
+    }
+
+    /**
+     * No network is confirmed yet. List what the server does know about: a network joined to another one that was built
+     * separately is a "Merge pending", settled by choosing which one to keep (the other's name and rules are deleted).
+     */
+    private void drawUnconfirmed(GuiGraphics graphics, int x, int y, int mouseX, int mouseY, List<Choice> confirmed) {
+        var networks = new ArrayList<JsonObject>();
+        if (model.has("networks")) {
+            for (JsonElement element : model.getAsJsonArray("networks")) {
+                networks.add(element.getAsJsonObject());
+            }
+        }
+        if (networks.isEmpty()) {
+            graphics.drawString(font, "No networks to set rules between yet.", x, y + 4, 0xFFC857, false);
+            graphics.drawString(font, "Their identities are not settled yet:", x, y + 18, 0xB8C0D0, false);
+            graphics.drawString(font, "wait a moment, or load both networks' chunks.", x, y + 28, 0xB8C0D0, false);
+            return;
+        }
+        graphics.drawString(font, "Networks here (" + networks.size() + "). Merge pending: choose one to keep.", x, y, 0xFFC857, true);
+        int rowY = y + 14;
+        for (var network : networks) {
+            if (rowY > y + 90) {
+                break;
+            }
+            String id = text(network, "id");
+            boolean pending = confirmed.stream().noneMatch(choice -> choice.id().equals(id));
+            graphics.drawString(font, font.plainSubstrByWidth(name(id), 150), x, rowY + 5, 0xFFFFFF, false);
+            String detail = (network.has("providers") ? network.get("providers").getAsInt() : 0) + " providers, "
+                    + (network.has("endpoints") ? network.get("endpoints").getAsInt() : 0) + " endpoints";
+            graphics.drawString(font, detail, x + 156, rowY + 5, 0x8890A0, false);
+            if (pending) {
+                button(graphics, x + 236, rowY, 50, 16, "Keep", mouseX, mouseY, click -> send("keep", id));
+            }
+            rowY += 20;
+        }
     }
 
     private void select(String group, List<Choice> choices, int index) {
